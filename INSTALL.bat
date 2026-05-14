@@ -1,6 +1,6 @@
 @echo off
 echo ============================================
-echo   GymSync ZKTeco Middleware ??? Installer
+echo   GymSync ZKTeco Middleware - Installer
 echo ============================================
 echo.
 echo This will install the GymSync ZKTeco middleware

@@ -1,5 +1,5 @@
 #Requires -RunAsAdministrator
-# GymSync ZKTeco Middleware — One-click installer
+# GymSync ZKTeco Middleware - One-click installer
 # Run this script as Administrator on the client PC.
 
 param(
@@ -107,7 +107,7 @@ if (-not (Test-Path $configPath)) {
   }
 }
 "@ | Set-Content $configPath -Encoding UTF8
-        Write-Host "      Default config.json created — UPDATE DEVICE IPs!" -ForegroundColor Yellow
+        Write-Host "      Default config.json created - UPDATE DEVICE IPs!" -ForegroundColor Yellow
     }
 } else {
     Write-Host "      config.json already exists, keeping it" -ForegroundColor Green
@@ -122,7 +122,7 @@ sc.exe create $ServiceName `
     start= auto `
     DisplayName= "GymSync ZKTeco Middleware" | Out-Null
 
-sc.exe description $ServiceName "ZKTeco device middleware for GymSync — manages biometric templates and attendance" | Out-Null
+sc.exe description $ServiceName "ZKTeco device middleware for GymSync - manages biometric templates and attendance" | Out-Null
 sc.exe failure $ServiceName reset= 86400 actions= restart/10000/restart/10000/restart/10000 | Out-Null
 
 Write-Host "      Service installed: $ServiceName" -ForegroundColor Green

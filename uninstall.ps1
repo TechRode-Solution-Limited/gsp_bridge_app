@@ -1,5 +1,5 @@
 #Requires -RunAsAdministrator
-# GymSync ZKTeco Middleware — Uninstaller
+# GymSync ZKTeco Middleware - Uninstaller
 
 param(
     [string]$InstallDir = "C:\GymSync",
@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 Write-Host ""
-Write-Host "GymSync ZKTeco Middleware — Uninstaller" -ForegroundColor Cyan
+Write-Host "GymSync ZKTeco Middleware - Uninstaller" -ForegroundColor Cyan
 Write-Host ""
 
 # Stop and remove service

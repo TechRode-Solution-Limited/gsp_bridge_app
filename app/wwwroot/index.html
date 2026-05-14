@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ZKTeco Test UI (C#)</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <header>
+    <h1>ZKTeco Test UI <span class="badge">C# / zkemkeeper</span></h1>
+    <p class="muted">Device: <code id="device-addr">-</code> | Status: <span id="conn-status" class="status-dot offline">disconnected</span> <span id="conn-msg" class="muted"></span></p>
+  </header>
+
+  <!-- Connection bar -->
+  <section class="conn-bar">
+    <div class="grid">
+      <label>IP <input id="cfg-ip" /></label>
+      <label>Port <input id="cfg-port" type="number" /></label>
+      <label>Password <input id="cfg-password" type="number" /></label>
+      <label>Timeout (s) <input id="cfg-timeout" type="number" /></label>
+      <label>Machine # <input id="cfg-machine" type="number" /></label>
+    </div>
+    <button id="btn-connect" data-action="connect">Connect</button>
+    <button id="btn-disconnect" class="btn-danger" data-action="disconnect" hidden>Disconnect</button>
+  </section>
+
+  <!-- Tab navigation -->
+  <nav class="tabs">
+    <button class="tab active" data-tab="users">Users</button>
+    <button class="tab" data-tab="enrollment">Enrollment</button>
+    <button class="tab" data-tab="templates">Templates</button>
+    <button class="tab" data-tab="attendance">Attendance</button>
+    <button class="tab" data-tab="device">Device</button>
+  </nav>
+
+  <main>
+    <!-- ==================== USERS TAB ==================== -->
+    <div class="tab-pane active" id="tab-users">
+      <section class="card">
+        <h2>List all users</h2>
+        <button data-action="list-users">Fetch users</button>
+        <div class="output" id="out-list-users"></div>
+      </section>
+
+      <section class="card">
+        <h2>Get user by ID</h2>
+        <div class="inline">
+          <label>Enroll # <input id="get-user-enroll" placeholder="e.g. 1001" /></label>
+          <button data-action="get-user">Get user</button>
+        </div>
+        <div class="output" id="out-get-user"></div>
+      </section>
+
+      <section class="card">
+        <h2>Create user</h2>
+        <div class="inline">
+          <label>Enroll # <input id="create-enroll" placeholder="e.g. 1001" /></label>
+          <label>Name <input id="create-name" placeholder="John Doe" /></label>
+          <label>Privilege <select id="create-privilege">
+            <option value="0">User (0)</option>
+            <option value="1">Enroller (1)</option>
+            <option value="2">Manager (2)</option>
+            <option value="3">Admin (3)</option>
+          </select></label>
+          <button data-action="create-user">Create</button>
+        </div>
+        <div class="output" id="out-create-user"></div>
+      </section>
+
+      <section class="card">
+        <h2>Update user</h2>
+        <div class="inline">
+          <label>Enroll # <input id="update-enroll" placeholder="e.g. 1001" /></label>
+          <label>Name <input id="update-name" placeholder="New name" /></label>
+          <label>Privilege <select id="update-privilege">
+            <option value="0">User (0)</option>
+            <option value="1">Enroller (1)</option>
+            <option value="2">Manager (2)</option>
+            <option value="3">Admin (3)</option>
+          </select></label>
+          <button data-action="update-user">Update</button>
+        </div>
+        <div class="output" id="out-update-user"></div>
+      </section>
+
+      <section class="card">
+        <h2>Card number</h2>
+        <div class="inline">
+          <label>Enroll # <input id="card-enroll" placeholder="e.g. 1001" /></label>
+          <label>Card # <input id="card-number" placeholder="e.g. 0008675309" /></label>
+          <button data-action="get-card">Get card</button>
+          <button data-action="set-card">Set card</button>
+          <button data-action="clear-card" class="btn-danger">Clear</button>
+        </div>
+        <div class="output" id="out-card"></div>
+      </section>
+
+      <section class="card">
+        <h2>Password (PIN)</h2>
+        <div class="inline">
+          <label>Enroll # <input id="password-enroll" placeholder="e.g. 1001" /></label>
+          <label>Password <input id="password-value" placeholder="numeric PIN" /></label>
+          <button data-action="get-password">Get password</button>
+          <button data-action="set-password">Set password</button>
+          <button data-action="clear-password" class="btn-danger">Clear</button>
+        </div>
+        <div class="output" id="out-password"></div>
+      </section>
+
+      <section class="card">
+        <h2>User validity dates</h2>
+        <div class="inline">
+          <label>Enroll # <input id="validity-enroll" placeholder="e.g. 1001" /></label>
+          <button data-action="get-validity">Get validity</button>
+        </div>
+        <div class="inline">
+          <label>Start date <input id="validity-start" type="date" /></label>
+          <label>End date <input id="validity-end" type="date" /></label>
+          <label class="checkbox"><input id="validity-expires" type="checkbox" checked /> Has expiry</label>
+          <button data-action="set-validity">Set validity</button>
+          <button data-action="clear-validity">Clear expiry</button>
+        </div>
+        <div class="output" id="out-validity"></div>
+      </section>
+
+      <section class="card" style="border:2px solid #f0a500">
+        <h2>🧪 Time Zone block test</h2>
+        <p class="muted">Non-destructive disable test via SetUserTZs. Step 1 reads &amp; saves the current TZ slots. Step 2 sets all to 0 (never zone) — biometric still matches but door stays locked. Step 3 restores the saved values.</p>
+        <div class="inline">
+          <label>Enroll # <input id="tz-test-enroll" placeholder="e.g. 1001" /></label>
+          <button data-action="tz-read">1. Read TZs</button>
+          <button data-action="tz-block" class="btn-danger">2. Block (set 0,0,0)</button>
+          <button data-action="tz-restore">3. Restore TZs</button>
+        </div>
+        <div class="output" id="out-tz-test"></div>
+      </section>
+
+      <section class="card">
+        <h2>Enable / Disable user</h2>
+        <p class="muted">Uses the V1 endpoint — group assignment. Enable assigns to group 1 (unrestricted access). Disable configures TZ slot 20 as "never" and assigns group 2 (all biometric auth rejected at the door). Calls POST /api/v1/users/enable.</p>
+        <div class="inline">
+          <label>Enroll # <input id="toggle-enroll" placeholder="e.g. 1001" /></label>
+          <button data-action="enable-user">Enable</button>
+          <button data-action="disable-user" class="btn-danger">Disable</button>
+        </div>
+        <div class="output" id="out-toggle-user"></div>
+      </section>
+
+      <section class="card">
+        <h2>Delete user</h2>
+        <div class="inline">
+          <label>Enroll # <input id="delete-enroll" placeholder="e.g. 1001" /></label>
+          <button data-action="delete-user" class="btn-danger">Delete</button>
+        </div>
+        <div class="output" id="out-delete-user"></div>
+      </section>
+    </div>
+
+    <!-- ==================== ENROLLMENT TAB ==================== -->
+    <div class="tab-pane" id="tab-enrollment">
+      <section class="card">
+        <h2>Enroll fingerprint</h2>
+        <p class="muted">Starts fingerprint enrollment on the device. The user must place their finger on the sensor when prompted.</p>
+        <div class="inline">
+          <label>Enroll # <input id="enroll-fp-id" placeholder="e.g. 1001" /></label>
+          <label>Finger index <select id="enroll-fp-finger">
+            <option value="0">0 - Right thumb</option>
+            <option value="1">1 - Right index</option>
+            <option value="2">2 - Right middle</option>
+            <option value="3">3 - Right ring</option>
+            <option value="4">4 - Right little</option>
+            <option value="5">5 - Left thumb</option>
+            <option value="6">6 - Left index</option>
+            <option value="7">7 - Left middle</option>
+            <option value="8">8 - Left ring</option>
+            <option value="9">9 - Left little</option>
+          </select></label>
+          <button data-action="enroll-finger">Start enrollment</button>
+        </div>
+        <div class="output" id="out-enroll-finger"></div>
+      </section>
+
+      <section class="card">
+        <h2>Enroll face</h2>
+        <p class="muted">Starts face enrollment on the device. The user must look at the camera when prompted.</p>
+        <div class="inline">
+          <label>Enroll # <input id="enroll-face-id" placeholder="e.g. 1001" /></label>
+          <button data-action="enroll-face">Start enrollment</button>
+        </div>
+        <div class="output" id="out-enroll-face"></div>
+      </section>
+    </div>
+
+    <!-- ==================== TEMPLATES TAB ==================== -->
+    <div class="tab-pane" id="tab-templates">
+      <section class="card">
+        <h2>Get fingerprint template</h2>
+        <div class="inline">
+          <label>Enroll # <input id="tpl-fp-get-enroll" placeholder="e.g. 1001" /></label>
+          <label>Finger index <select id="tpl-fp-get-finger">
+            <option value="0">0</option><option value="1">1</option><option value="2">2</option>
+            <option value="3">3</option><option value="4">4</option><option value="5">5</option>
+            <option value="6">6</option><option value="7">7</option><option value="8">8</option>
+            <option value="9">9</option>
+          </select></label>
+          <button data-action="get-finger-tpl">Get template</button>
+        </div>
+        <div class="output" id="out-get-finger-tpl"></div>
+      </section>
+
+      <section class="card">
+        <h2>Get face template</h2>
+        <div class="inline">
+          <label>Enroll # <input id="tpl-face-get-enroll" placeholder="e.g. 1001" /></label>
+          <label>Face index <input id="tpl-face-get-index" type="number" value="50" /></label>
+          <button data-action="get-face-tpl">Get template</button>
+        </div>
+        <div class="output" id="out-get-face-tpl"></div>
+      </section>
+
+      <section class="card">
+        <h2>Delete fingerprint template</h2>
+        <div class="inline">
+          <label>Enroll # <input id="tpl-fp-del-enroll" placeholder="e.g. 1001" /></label>
+          <label>Finger index <select id="tpl-fp-del-finger">
+            <option value="0">0</option><option value="1">1</option><option value="2">2</option>
+            <option value="3">3</option><option value="4">4</option><option value="5">5</option>
+            <option value="6">6</option><option value="7">7</option><option value="8">8</option>
+            <option value="9">9</option>
+          </select></label>
+          <button data-action="delete-finger-tpl" class="btn-danger">Delete</button>
+        </div>
+        <div class="output" id="out-delete-finger-tpl"></div>
+      </section>
+
+      <section class="card">
+        <h2>Delete face template</h2>
+        <div class="inline">
+          <label>Enroll # <input id="tpl-face-del-enroll" placeholder="e.g. 1001" /></label>
+          <label>Face index <input id="tpl-face-del-index" type="number" value="50" /></label>
+          <button data-action="delete-face-tpl" class="btn-danger">Delete</button>
+        </div>
+        <div class="output" id="out-delete-face-tpl"></div>
+      </section>
+
+      <section class="card">
+        <h2>Upload fingerprint template</h2>
+        <div class="inline">
+          <label>Enroll # <input id="tpl-fp-up-enroll" placeholder="e.g. 1001" /></label>
+          <label>Finger index <select id="tpl-fp-up-finger">
+            <option value="0">0</option><option value="1">1</option><option value="2">2</option>
+            <option value="3">3</option><option value="4">4</option><option value="5">5</option>
+            <option value="6">6</option><option value="7">7</option><option value="8">8</option>
+            <option value="9">9</option>
+          </select></label>
+        </div>
+        <label>Template (base64) <textarea id="tpl-fp-up-data" rows="3" placeholder="Paste base64 template from Get fingerprint template"></textarea></label>
+        <div class="inline" style="margin-top:8px">
+          <button data-action="upload-finger-tpl">Upload</button>
+        </div>
+        <div class="output" id="out-upload-finger-tpl"></div>
+      </section>
+
+      <section class="card">
+        <h2>Upload face template</h2>
+        <div class="inline">
+          <label>Enroll # <input id="tpl-face-up-enroll" placeholder="e.g. 1001" /></label>
+          <label>Face index <input id="tpl-face-up-index" type="number" value="50" /></label>
+          <label>Bytes (from GET) <input id="tpl-face-up-bytes" type="number" placeholder="optional — paste 'bytes' value from Get face template" /></label>
+        </div>
+        <label>Template (base64) <textarea id="tpl-face-up-data" rows="3" placeholder="Paste base64 template from Get face template"></textarea></label>
+        <div class="inline" style="margin-top:8px">
+          <button data-action="upload-face-tpl">Upload</button>
+        </div>
+        <div class="output" id="out-upload-face-tpl"></div>
+      </section>
+
+    </div>
+
+    <!-- ==================== ATTENDANCE TAB ==================== -->
+    <div class="tab-pane" id="tab-attendance">
+      <section class="card">
+        <h2>All attendance logs</h2>
+        <button data-action="att-all">Fetch all logs</button>
+        <div class="output" id="out-att-all"></div>
+      </section>
+
+      <section class="card">
+        <h2>New attendance logs</h2>
+        <p class="muted">Only logs since the last read.</p>
+        <button data-action="att-new">Fetch new logs</button>
+        <div class="output" id="out-att-new"></div>
+      </section>
+
+      <section class="card">
+        <h2>Today's attendance logs</h2>
+        <p class="muted">All logs from 00:00:00 to 23:59:59 of the current day (server time).</p>
+        <button data-action="att-today">Fetch today's logs</button>
+        <div class="output" id="out-att-today"></div>
+      </section>
+
+      <section class="card">
+        <h2>Logs by date range</h2>
+        <div class="inline">
+          <label>Start <input id="att-range-start" type="datetime-local" /></label>
+          <label>End <input id="att-range-end" type="datetime-local" /></label>
+          <button data-action="att-range">Fetch</button>
+        </div>
+        <div class="output" id="out-att-range"></div>
+      </section>
+
+      <section class="card">
+        <h2>Admin / operation logs</h2>
+        <button data-action="att-admin">Fetch admin logs</button>
+        <div class="output" id="out-att-admin"></div>
+      </section>
+
+      <section class="card">
+        <h2>Delete logs by date range</h2>
+        <div class="inline">
+          <label>Start <input id="att-del-start" type="datetime-local" /></label>
+          <label>End <input id="att-del-end" type="datetime-local" /></label>
+          <button data-action="att-delete-range" class="btn-danger">Delete range</button>
+        </div>
+        <div class="output" id="out-att-delete-range"></div>
+      </section>
+
+      <section class="card">
+        <h2>Delete logs before date</h2>
+        <div class="inline">
+          <label>Before <input id="att-del-before" type="datetime-local" /></label>
+          <button data-action="att-delete-before" class="btn-danger">Delete</button>
+        </div>
+        <div class="output" id="out-att-delete-before"></div>
+      </section>
+
+      <section class="card">
+        <h2>Clear all logs</h2>
+        <div class="inline">
+          <button data-action="att-clear" class="btn-danger">Clear attendance logs</button>
+          <button data-action="att-clear-admin" class="btn-danger">Clear admin logs</button>
+        </div>
+        <div class="output" id="out-att-clear"></div>
+      </section>
+    </div>
+
+    <!-- ==================== DEVICE TAB ==================== -->
+    <div class="tab-pane" id="tab-device">
+      <section class="card">
+        <h2>Device info</h2>
+        <button data-action="device-info">Get info</button>
+        <div class="output" id="out-device-info"></div>
+      </section>
+
+      <section class="card">
+        <h2>Device time</h2>
+        <div class="inline">
+          <button data-action="device-time">Get time</button>
+          <button data-action="device-time-sync">Sync to host clock</button>
+        </div>
+        <div class="output" id="out-device-time"></div>
+      </section>
+
+      <section class="card">
+        <h2>Voice test</h2>
+        <div class="inline">
+          <label>Voice index <input id="voice-index" type="number" value="0" min="0" /></label>
+          <button data-action="voice-test">Play</button>
+        </div>
+        <div class="output" id="out-voice-test"></div>
+      </section>
+
+      <section class="card">
+        <h2>Restart device</h2>
+        <button data-action="device-restart" class="btn-danger">Restart</button>
+        <div class="output" id="out-device-restart"></div>
+      </section>
+
+      <section class="card">
+        <h2>Door control</h2>
+        <div class="inline">
+          <button data-action="door-lock" class="btn-danger">Lock</button>
+          <label>Unlock duration (s) <input id="door-seconds" type="number" value="5" min="1" /></label>
+          <button data-action="door-unlock">Unlock</button>
+        </div>
+        <div class="output" id="out-door"></div>
+      </section>
+
+      <section class="card">
+        <h2>🧪 TZ Info (slot configuration)</h2>
+        <p class="muted">Read/write raw TZ strings for slot indices 0–50. TZ 1 = all-day (<code>00002359</code> × 7). A "never" zone is <code>00000000</code> × 7 = 56 zeros — click the button to pre-fill. Write the never zone to slot 20, then point a user at it via the TZs test above.</p>
+        <div class="inline">
+          <label>TZ index <input id="tz-info-index" type="number" value="1" min="0" max="50" style="width:80px" /></label>
+          <button data-action="tz-info-get">Get TZ data</button>
+        </div>
+        <div class="output" id="out-tz-info-get"></div>
+        <div class="inline">
+          <label>TZ index <input id="tz-info-set-index" type="number" value="20" min="0" max="50" style="width:80px" /></label>
+          <label>TZ data <input id="tz-info-set-data" placeholder="paste raw TZ string" style="width:340px" /></label>
+          <button data-action="tz-fill-never">Fill &quot;never&quot;</button>
+          <button data-action="tz-info-set">Set TZ data</button>
+        </div>
+        <div class="output" id="out-tz-info-set"></div>
+      </section>
+
+      <section class="card">
+        <h2>🧪 Update User Group</h2>
+        <p class="muted">Read/write the access group a member belongs to (legacy integer API — <code>GetUserGroup</code> / <code>SetUserGroup</code>). <strong>Groups are 1-based on this device</strong> — group 0 returns -4993 (same as TZ slot 0). Use group 1 as the default/unblocked group. Configure group 2 with a "never" TZ, then flip between group 1 (open) and group 2 (blocked) to non-destructively gate access.</p>
+        <div class="inline">
+          <label>Enroll # <input id="user-group-enroll" placeholder="e.g. 1001" /></label>
+          <button data-action="user-group-get">Get group</button>
+        </div>
+        <div class="output" id="out-user-group-get"></div>
+        <div class="inline">
+          <label>Enroll # <input id="user-group-set-enroll" placeholder="e.g. 1001" /></label>
+          <label>Group # <input id="user-group-set-no" type="number" value="1" min="1" max="9" style="width:70px" /></label>
+          <button data-action="user-group-set">Set group</button>
+        </div>
+        <div class="output" id="out-user-group-set"></div>
+      </section>
+
+      <section class="card">
+        <h2>🧪 Group TZ (SSR)</h2>
+        <p class="muted">Read/write TZ assignments for access groups 1–9 (SSR API — group 0 is not supported on ZAM180_TFT, returns -4993). <strong>Plan:</strong> write a "never" TZ to slot 20, set group 2 to tz1=20 tz2=20 tz3=20, then flip users between group 1 (normal access) and group 2 (blocked) using the User Group section above.</p>
+        <div class="inline">
+          <label>Group # <input id="group-tz-get-no" type="number" value="1" min="0" max="5" style="width:70px" /></label>
+          <button data-action="group-tz-get">Get group TZ</button>
+        </div>
+        <div class="output" id="out-group-tz-get"></div>
+        <div class="inline">
+          <label>Group # <input id="group-tz-set-no" type="number" value="1" min="0" max="5" style="width:70px" /></label>
+          <label>tz1 <input id="group-tz-tz1" type="number" value="0" style="width:60px" /></label>
+          <label>tz2 <input id="group-tz-tz2" type="number" value="0" style="width:60px" /></label>
+          <label>tz3 <input id="group-tz-tz3" type="number" value="0" style="width:60px" /></label>
+          <label>validHoliday <input id="group-tz-holiday" type="number" value="0" style="width:60px" /></label>
+          <label>verifyStyle <input id="group-tz-vstyle" type="number" value="0" style="width:60px" /></label>
+          <button data-action="group-tz-set">Set group TZ</button>
+        </div>
+        <div class="output" id="out-group-tz-set"></div>
+      </section>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

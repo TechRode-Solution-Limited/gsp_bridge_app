@@ -422,6 +422,25 @@ const actions = {
     renderAttLogs("out-att-all", body);
   },
 
+  async "att-drain"(btn) {
+    if (!confirm("Fetch ALL attendance logs and schedule a background delete of everything read? Newer scans arriving after this call are preserved.")) return;
+    show("out-att-drain", true, "Draining...");
+    const { ok, body } = await callJson("/api/v1/attendance/all-and-clear", deviceOverrides());
+    if (!ok) return show("out-att-drain", false, body.error || body);
+    const d = body.data;
+    if (!d.logs.length) {
+      show("out-att-drain", true, "Device buffer empty — nothing to drain");
+      return;
+    }
+    const rows = d.logs.map(l =>
+      `<tr><td>${l.userId}</td><td>${l.timestamp}</td><td>${verifyNames[l.verifyMethod] ?? l.verifyMethod}</td><td>${inOutNames[l.inOutState] ?? l.inOutState}</td><td>${l.workCode || ""}</td></tr>`
+    ).join("");
+    showHtml("out-att-drain", true, `<table>
+      <thead><tr><th>User ID</th><th>Time</th><th>Verify</th><th>State</th><th>Work Code</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table><p style="margin:8px 0 0;color:var(--muted)">Returned ${d.count} records. Background bulk clear scheduled.</p>`);
+  },
+
   async "att-new"(btn) {
     show("out-att-new", true, "Fetching new logs...");
     const { ok, body } = await callJson("/api/attendance/new", deviceOverrides());

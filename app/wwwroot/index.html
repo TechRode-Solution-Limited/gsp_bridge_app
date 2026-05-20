@@ -286,6 +286,13 @@
         <div class="output" id="out-att-all"></div>
       </section>
 
+      <section class="card" style="border:2px solid #f0a500">
+        <h2>Drain attendance logs (fetch + delete in background)</h2>
+        <p class="muted">Reads every log on the device, returns them, then queues a background delete bounded by the latest timestamp returned — scans arriving after this call are not wiped.</p>
+        <button data-action="att-drain" class="btn-danger">Fetch &amp; clear all logs</button>
+        <div class="output" id="out-att-drain"></div>
+      </section>
+
       <section class="card">
         <h2>New attendance logs</h2>
         <p class="muted">Only logs since the last read.</p>

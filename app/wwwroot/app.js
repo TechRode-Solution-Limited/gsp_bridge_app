@@ -111,6 +111,22 @@ const actions = {
     </table><p style="margin:8px 0 0;color:var(--muted)">Total: ${body.count} users</p>`);
   },
 
+  async "list-users-groups"(btn) {
+    show("out-list-users", true, "Fetching users + groups...");
+    const { ok, body } = await callJson("/api/v1/users/groups", deviceOverrides());
+    if (!ok) return show("out-list-users", false, body.error || body);
+
+    const d = body.data;
+    const rows = d.users.map((u) =>
+      `<tr><td>${u.enrollNumber}</td><td>${u.name || ""}</td><td>${u.privilege}</td><td>${u.enabled ? "yes" : "no"}</td><td>${u.groupNo ?? "-"}</td></tr>`
+    ).join("");
+
+    showHtml("out-list-users", true, `<table>
+      <thead><tr><th>Enroll #</th><th>Name</th><th>Privilege</th><th>Enabled</th><th>Group</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="5">No users</td></tr>'}</tbody>
+    </table><p style="margin:8px 0 0;color:var(--muted)">Total: ${d.count} users</p>`);
+  },
+
   async "get-user"(btn) {
     const enroll = $("get-user-enroll").value.trim();
     if (!enroll) return show("out-get-user", false, "Enter enroll number");
@@ -325,6 +341,17 @@ const actions = {
     show("out-delete-user", true, "Deleting...");
     const { ok, body } = await callJson("/api/user/delete", { ...deviceOverrides(), enrollNumber: enroll });
     show("out-delete-user", ok, ok ? body.message : (body.error || body));
+  },
+
+  async "delete-all-users"(btn) {
+    const typed = prompt('This deletes EVERY user and all their enrolled data. Type "DELETE ALL" to confirm.');
+    if (typed !== "DELETE ALL") return show("out-delete-all-users", false, "Cancelled — confirmation text did not match.");
+    show("out-delete-all-users", true, "Deleting all users...");
+    const { ok, body } = await callJson("/api/v1/users/delete-all", deviceOverrides());
+    if (!ok) return show("out-delete-all-users", false, body.error || body);
+    const d = body.data;
+    const msg = `Deleted ${d.deleted}/${d.requested} users${d.failed ? ` — ${d.failed} failed: ${d.errors.join("; ")}` : ""}`;
+    show("out-delete-all-users", d.failed === 0, msg);
   },
 
   // Enrollment

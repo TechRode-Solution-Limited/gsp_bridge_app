@@ -39,7 +39,10 @@
     <div class="tab-pane active" id="tab-users">
       <section class="card">
         <h2>List all users</h2>
-        <button data-action="list-users">Fetch users</button>
+        <div class="inline">
+          <button data-action="list-users">Fetch users</button>
+          <button data-action="list-users-groups">Fetch users + groups</button>
+        </div>
         <div class="output" id="out-list-users"></div>
       </section>
 
@@ -154,6 +157,15 @@
           <button data-action="delete-user" class="btn-danger">Delete</button>
         </div>
         <div class="output" id="out-delete-user"></div>
+      </section>
+
+      <section class="card" style="border:2px solid #d64545">
+        <h2>⚠️ Delete ALL users</h2>
+        <p class="muted">Removes <strong>every</strong> user and their enrolled data (fingerprints, faces, cards) from the device. Irreversible — there is no per-user filter. Type <code>DELETE ALL</code> to confirm.</p>
+        <div class="inline">
+          <button data-action="delete-all-users" class="btn-danger">Delete all users</button>
+        </div>
+        <div class="output" id="out-delete-all-users"></div>
       </section>
     </div>
 

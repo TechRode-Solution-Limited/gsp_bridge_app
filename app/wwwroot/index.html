@@ -32,6 +32,7 @@
     <button class="tab" data-tab="templates">Templates</button>
     <button class="tab" data-tab="attendance">Attendance</button>
     <button class="tab" data-tab="device">Device</button>
+    <button class="tab" data-tab="cached">Cached</button>
   </nav>
 
   <main>
@@ -457,6 +458,37 @@
           <button data-action="group-tz-set">Set group TZ</button>
         </div>
         <div class="output" id="out-group-tz-set"></div>
+      </section>
+    </div>
+
+    <!-- ==================== CACHED TAB ==================== -->
+    <div class="tab-pane" id="tab-cached">
+      <section class="card">
+        <h2>Cached device status</h2>
+        <p class="muted" style="margin:0 0 10px">Served from the background-maintained store — no live device round-trip. Uses the IP/Port from the connection bar above (blank = configured default).</p>
+        <div class="inline">
+          <button data-action="status-cached">Get cached status</button>
+        </div>
+        <div class="output" id="out-status-cached"></div>
+      </section>
+
+      <section class="card">
+        <h2>Cached user list</h2>
+        <p class="muted" style="margin:0 0 10px">The warm user list + per-PIN groups. <code>stale: true</code> means reception would fall back to a live read.</p>
+        <div class="inline">
+          <button data-action="users-cached">Fetch cached users</button>
+        </div>
+        <div class="output" id="out-users-cached"></div>
+      </section>
+
+      <section class="card">
+        <h2>Cached access group (single PIN)</h2>
+        <p class="muted" style="margin:0 0 10px">A single-PIN group lookup from the same store. A miss / stale entry returns <code>cached: false</code>.</p>
+        <div class="inline">
+          <label>Enroll # <input id="group-cached-enroll" placeholder="e.g. 1001" /></label>
+          <button data-action="group-cached">Get cached group</button>
+        </div>
+        <div class="output" id="out-group-cached"></div>
       </section>
     </div>
   </main>

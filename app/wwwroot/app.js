@@ -598,6 +598,57 @@ const actions = {
     const { ok, body } = await callJson("/api/device/door/unlock", { ...deviceOverrides(), seconds });
     show("out-door", ok, ok ? body.message : (body.error || body));
   },
+
+  // Cached (no live device round-trip — served from the background-maintained stores)
+  async "status-cached"(btn) {
+    show("out-status-cached", true, "Reading cached status...");
+    const { ok, body } = await callJson("/api/v1/status/cached", deviceOverrides());
+    if (!ok) return show("out-status-cached", false, body.error || body);
+    const d = body.data;
+    if (d.cached === false)
+      return showHtml("out-status-cached", true,
+        `<p>No cached entry yet for <code>${d.device}</code> — the background poller hasn't recorded this device.</p>`);
+    showHtml("out-status-cached", true, `<table><tbody>
+      <tr><th>Device</th><td>${d.device}</td></tr>
+      <tr><th>Status</th><td>${d.online ? "online" : "offline"}</td></tr>
+      <tr><th>Cached / stale</th><td>${d.cached} / ${d.stale}</td></tr>
+      <tr><th>Checked at</th><td>${d.checkedAt} (${d.ageSeconds}s ago)</td></tr>
+      <tr><th>Serial / firmware</th><td>${d.serial ?? "-"} / ${d.firmware ?? "-"}</td></tr>
+      <tr><th>Circuit open</th><td>${d.circuitOpen ?? "-"} (fails: ${d.consecutiveFailures ?? "-"})</td></tr>
+      ${d.error ? `<tr><th>Error</th><td>${d.error}</td></tr>` : ""}
+    </tbody></table>`);
+  },
+
+  async "users-cached"(btn) {
+    show("out-users-cached", true, "Reading cached user list...");
+    const { ok, body } = await callJson("/api/v1/users/cached", deviceOverrides());
+    if (!ok) return show("out-users-cached", false, body.error || body);
+    const d = body.data;
+    if (d.cached === false)
+      return showHtml("out-users-cached", true,
+        `<p>No cached list yet for <code>${d.device}</code> (<code>stale: true</code>) — reception would read live.</p>`);
+    const rows = d.users.map((u) =>
+      `<tr><td>${u.enrollNumber}</td><td>${u.name || ""}</td><td>${u.privilege}</td><td>${u.enabled ? "yes" : "no"}</td><td>${u.groupNo ?? "-"}</td></tr>`
+    ).join("");
+    showHtml("out-users-cached", true, `<table>
+      <thead><tr><th>Enroll #</th><th>Name</th><th>Privilege</th><th>Enabled</th><th>Group</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="5">No users</td></tr>'}</tbody>
+    </table><p style="margin:8px 0 0;color:var(--muted)">Total: ${d.count} · stale: ${d.stale} · checked ${d.checkedAt}</p>`);
+  },
+
+  async "group-cached"(btn) {
+    const enroll = $("group-cached-enroll").value.trim();
+    if (!enroll) return show("out-group-cached", false, "Enter enroll number");
+    show("out-group-cached", true, "Reading cached group...");
+    const { ok, body } = await callJson("/api/v1/users/group/cached", { ...deviceOverrides(), enrollNumber: enroll });
+    if (!ok) return show("out-group-cached", false, body.error || body);
+    const d = body.data;
+    if (d.cached && d.userGroup)
+      return showHtml("out-group-cached", true,
+        `<p>PIN <code>${d.userGroup.enrollNumber}</code> → group <strong>${d.userGroup.groupNo}</strong> (cached, fresh).</p>`);
+    showHtml("out-group-cached", true,
+      `<p>Cache miss / stale for <code>${enroll}</code> on <code>${d.device}</code> — reception would fall back to the live <code>/users/group/get</code>.</p>`);
+  },
 };
 
 // ---- Event delegation ----

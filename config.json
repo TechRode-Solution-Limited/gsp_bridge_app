@@ -21,5 +21,10 @@
     "enabled": true,
     "intervalSeconds": 60,
     "staleAfterSeconds": 150
+  },
+  "userCache": {
+    "enabled": true,
+    "refreshAtLocal": ["21:00", "04:30"],
+    "staleAfterSeconds": 86400
   }
 }

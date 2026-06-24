@@ -68,6 +68,22 @@ function showHtml(elId, ok, html) {
   el.innerHTML = html;
 }
 
+// Coloured freshness indicator for the Cached tab.
+//   ok    — served from cache, within TTL
+//   stale — served from cache but past TTL / restored-on-restart / busted by a write
+//   live  — cache was empty, this value came from a live device read (fallback)
+//   miss  — no cached value and no live value available
+function freshnessChip(kind) {
+  const map = {
+    ok:    ["● OK",    "#0f5132", "#d1e7dd"],
+    stale: ["● STALE", "#664d03", "#fff3cd"],
+    live:  ["● LIVE",  "#084298", "#cfe2ff"],
+    miss:  ["● MISS",  "#842029", "#f8d7da"],
+  };
+  const [label, fg, bg] = map[kind] || map.miss;
+  return `<span style="display:inline-block;padding:2px 9px;border-radius:11px;font-size:11px;font-weight:700;letter-spacing:.3px;color:${fg};background:${bg}">${label}</span>`;
+}
+
 async function callJson(path, body) {
   const res = await fetch(path, {
     method: "POST",
@@ -613,13 +629,14 @@ const actions = {
       const r = await callJson("/api/v1/status", deviceOverrides());
       if (!r.ok || !r.body.data)
         return showHtml("out-status-cached", false,
-          `<p>No cached entry for <code>${d.device}</code> and the live probe failed: ${(r.body && r.body.error) || "unknown error"}.</p>`);
+          `${freshnessChip("miss")}<p>No cached entry for <code>${d.device}</code> and the live probe failed: ${(r.body && r.body.error) || "unknown error"}.</p>`);
       d = r.body.data; live = true;
     }
-    showHtml("out-status-cached", true, `<table><tbody>
+    const chip = live ? freshnessChip("live") : freshnessChip(d.stale ? "stale" : "ok");
+    showHtml("out-status-cached", true, `<p style="margin:0 0 8px">${chip}</p><table><tbody>
       <tr><th>Device</th><td>${d.device}</td></tr>
       <tr><th>Status</th><td>${d.online ? "online" : "offline"}</td></tr>
-      <tr><th>Source</th><td>${live ? '<span class="badge">live — cache was empty</span>' : `cached · stale: ${d.stale}`}</td></tr>
+      <tr><th>Source</th><td>${live ? "live device read (cache was empty)" : `cache · stale: ${d.stale}`}</td></tr>
       ${live ? "" : `<tr><th>Checked at</th><td>${d.checkedAt} (${d.ageSeconds}s ago)</td></tr>`}
       <tr><th>Serial / firmware</th><td>${d.serial ?? "-"} / ${d.firmware ?? "-"}</td></tr>
       ${live ? "" : `<tr><th>Circuit open</th><td>${d.circuitOpen ?? "-"} (fails: ${d.consecutiveFailures ?? "-"})</td></tr>`}
@@ -638,19 +655,51 @@ const actions = {
       const r = await callJson("/api/v1/users/groups", deviceOverrides());
       if (!r.ok || !r.body.data)
         return showHtml("out-users-cached", false,
-          `<p>No cached list for <code>${d.device}</code> and the live read failed: ${(r.body && r.body.error) || "unknown error"}.</p>`);
+          `${freshnessChip("miss")}<p>No cached list for <code>${d.device}</code> and the live read failed: ${(r.body && r.body.error) || "unknown error"}.</p>`);
       d = r.body.data; live = true;
     }
+    const chip = live ? freshnessChip("live") : freshnessChip(d.stale ? "stale" : "ok");
     const rows = d.users.map((u) =>
       `<tr><td>${u.enrollNumber}</td><td>${u.name || ""}</td><td>${u.privilege}</td><td>${u.enabled ? "yes" : "no"}</td><td>${u.groupNo ?? "-"}</td></tr>`
     ).join("");
     const meta = live
-      ? `Total: ${d.count} · <span class="badge">live — cache was empty</span>`
-      : `Total: ${d.count} · stale: ${d.stale} · checked ${d.checkedAt}`;
-    showHtml("out-users-cached", true, `<table>
+      ? `Total: ${d.count} · live device read (cache was empty)`
+      : `Total: ${d.count} · checked ${d.checkedAt}`;
+    showHtml("out-users-cached", true, `<p style="margin:0 0 8px">${chip}</p><table>
       <thead><tr><th>Enroll #</th><th>Name</th><th>Privilege</th><th>Enabled</th><th>Group</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="5">No users</td></tr>'}</tbody>
     </table><p style="margin:8px 0 0;color:var(--muted)">${meta}</p>`);
+  },
+
+  async "user-cached"(btn) {
+    const enroll = $("user-cached-enroll").value.trim();
+    if (!enroll) return show("out-user-cached", false, "Enter enroll number");
+    show("out-user-cached", true, "Reading cached user...");
+    const { ok, body } = await callJson("/api/v1/users/cached/get", { ...deviceOverrides(), enrollNumber: enroll });
+    if (!ok) return show("out-user-cached", false, body.error || body);
+    let d = body.data, u = d.user, live = false;
+    if (!d.cached || d.stale || !d.found) {
+      // Cache empty / stale / PIN not in the cached list — fall back to a live read.
+      const r = await callJson("/api/v1/users/get", { ...deviceOverrides(), enrollNumber: enroll });
+      if (r.ok && r.body.data && r.body.data.user) {
+        const lu = r.body.data.user;
+        u = { enrollNumber: lu.enrollNumber, name: lu.name, privilege: lu.privilege, enabled: lu.enabled, groupNo: null };
+        live = true;
+      } else if (!u) {
+        return showHtml("out-user-cached", false,
+          `${freshnessChip("miss")}<p>User <code>${enroll}</code> not in cache for <code>${d.device}</code>, and the live read failed: ${(r.body && r.body.error) || "unknown error"}.</p>`);
+      }
+      // else: live read failed but a (stale) cached record exists — show it below.
+    }
+    const chip = live ? freshnessChip("live") : freshnessChip(d.stale ? "stale" : "ok");
+    showHtml("out-user-cached", true, `<p style="margin:0 0 8px">${chip}</p><table><tbody>
+      <tr><th>Enroll #</th><td>${u.enrollNumber}</td></tr>
+      <tr><th>Name</th><td>${u.name || "-"}</td></tr>
+      <tr><th>Privilege</th><td>${u.privilege}</td></tr>
+      <tr><th>Enabled</th><td>${u.enabled ? "yes" : "no"}</td></tr>
+      <tr><th>Group</th><td>${u.groupNo ?? "-"}</td></tr>
+      ${live ? "" : `<tr><th>Checked at</th><td>${d.checkedAt}</td></tr>`}
+    </tbody></table>`);
   },
 
   async "group-cached"(btn) {
@@ -662,16 +711,16 @@ const actions = {
     const d = body.data;
     if (d.cached && d.userGroup)
       return showHtml("out-group-cached", true,
-        `<p>PIN <code>${d.userGroup.enrollNumber}</code> → group <strong>${d.userGroup.groupNo}</strong> <span class="badge">cached, fresh</span></p>`);
+        `<p style="margin:0 0 8px">${freshnessChip("ok")}</p><p>PIN <code>${d.userGroup.enrollNumber}</code> → group <strong>${d.userGroup.groupNo}</strong></p>`);
     // Cache miss / stale — fall back to the live read like reception would.
     const r = await callJson("/api/v1/users/group/get", { ...deviceOverrides(), enrollNumber: enroll });
     if (r.ok && r.body.data && r.body.data.userGroup) {
       const ug = r.body.data.userGroup;
       return showHtml("out-group-cached", true,
-        `<p>PIN <code>${ug.enrollNumber}</code> → group <strong>${ug.groupNo}</strong> <span class="badge">live — cache miss/stale</span></p>`);
+        `<p style="margin:0 0 8px">${freshnessChip("live")}</p><p>PIN <code>${ug.enrollNumber}</code> → group <strong>${ug.groupNo}</strong> <span style="color:var(--muted)">(cache miss/stale — read live)</span></p>`);
     }
     showHtml("out-group-cached", false,
-      `<p>Cache miss for <code>${enroll}</code> on <code>${d.device}</code> and the live read failed: ${(r.body && r.body.error) || "unknown error"}.</p>`);
+      `${freshnessChip("miss")}<p>Cache miss for <code>${enroll}</code> on <code>${d.device}</code> and the live read failed: ${(r.body && r.body.error) || "unknown error"}.</p>`);
   },
 };
 

@@ -482,6 +482,16 @@
       </section>
 
       <section class="card">
+        <h2>Cached single user</h2>
+        <p class="muted" style="margin:0 0 10px">One member's full record from the same warm cache. Falls back to a live read on a miss / stale entry.</p>
+        <div class="inline">
+          <label>Enroll # <input id="user-cached-enroll" placeholder="e.g. 1001" /></label>
+          <button data-action="user-cached">Fetch cached user</button>
+        </div>
+        <div class="output" id="out-user-cached"></div>
+      </section>
+
+      <section class="card">
         <h2>Cached access group (single PIN)</h2>
         <p class="muted" style="margin:0 0 10px">A single-PIN group lookup from the same store. A miss / stale entry returns <code>cached: false</code>.</p>
         <div class="inline">

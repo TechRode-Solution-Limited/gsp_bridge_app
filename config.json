@@ -17,7 +17,7 @@
     "port": 5000
   },
   "security": {
-    "apiKey": "web-api-key"
+    "apiKey": "c0MI+Mlna5mT967Oeky8sIMLKvB+5cq4tJYZ+PDO3HWoNuom3AtYh+QbtvoHGGqy"
   },
   "monitor": {
     "enabled": true,

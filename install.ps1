@@ -5,7 +5,15 @@
 param(
     [string]$InstallDir = "C:\GymSync",
     [int]$Port = 5000,
-    [string]$ServiceName = "GymSyncZkt"
+    [string]$ServiceName = "GymSyncZkt",
+    # Firewall scope for the inbound rule. Default "LocalSubnet" keeps the control
+    # plane off the wider network / any bridged guest WiFi; pass the reception PC's
+    # IP (or a comma-separated list) to lock it down further, or "Any" to allow all.
+    [string]$AllowedSource = "LocalSubnet",
+    # API key written into a freshly-generated config.json so LAN callers must send
+    # X-Api-Key. Leave blank to auto-generate one (printed at the end). Loopback
+    # callers (the local test UI) are always exempt. Ignored if config.json exists.
+    [string]$ApiKey = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -81,12 +89,15 @@ if (Test-Path $comDll) {
 # --- Step 5: Create config.json if not exists ---
 Write-Host "[5/7] Setting up configuration..." -ForegroundColor Yellow
 $configPath = "$InstallDir\config.json"
+$generatedApiKey = ""
 if (-not (Test-Path $configPath)) {
     $configSource = Join-Path $scriptDir "config.json"
     if (Test-Path $configSource) {
         Copy-Item $configSource $configPath
         Write-Host "      config.json copied from installer bundle"
     } else {
+        # Generate (or accept) an API key so the LAN-exposed control plane isn't open.
+        $generatedApiKey = if ([string]::IsNullOrWhiteSpace($ApiKey)) { [guid]::NewGuid().ToString('N') } else { $ApiKey }
         # Generate default config
         @"
 {
@@ -104,10 +115,14 @@ if (-not (Test-Path $configPath)) {
   "web": {
     "host": "0.0.0.0",
     "port": $Port
+  },
+  "security": {
+    "apiKey": "$generatedApiKey"
   }
 }
 "@ | Set-Content $configPath -Encoding UTF8
         Write-Host "      Default config.json created - UPDATE DEVICE IPs!" -ForegroundColor Yellow
+        Write-Host "      API key generated - reception must send it as X-Api-Key" -ForegroundColor Yellow
     }
 } else {
     Write-Host "      config.json already exists, keeping it" -ForegroundColor Green
@@ -132,13 +147,23 @@ Write-Host "[7/7] Configuring firewall and starting service..." -ForegroundColor
 
 $fwRule = Get-NetFirewallRule -DisplayName "GymSync ZKTeco Middleware" -ErrorAction SilentlyContinue
 if (-not $fwRule) {
-    New-NetFirewallRule `
-        -DisplayName "GymSync ZKTeco Middleware" `
-        -Direction Inbound `
-        -Protocol TCP `
-        -LocalPort $Port `
-        -Action Allow | Out-Null
-    Write-Host "      Firewall rule created for port $Port" -ForegroundColor Green
+    # Scope the inbound rule to the Private profile and a trusted source (LocalSubnet
+    # by default) rather than opening the port to every profile/address. The control
+    # plane is high-impact (door unlock, member/biometric wipe), so don't publish it
+    # to bridged guest WiFi or any untrusted network the host might later join.
+    $fwParams = @{
+        DisplayName = "GymSync ZKTeco Middleware"
+        Direction   = "Inbound"
+        Protocol    = "TCP"
+        LocalPort   = $Port
+        Action      = "Allow"
+        Profile     = "Private"
+    }
+    if ($AllowedSource -and $AllowedSource -ne "Any") {
+        $fwParams.RemoteAddress = ($AllowedSource -split ',' | ForEach-Object { $_.Trim() })
+    }
+    New-NetFirewallRule @fwParams | Out-Null
+    Write-Host "      Firewall rule created for port $Port (profile=Private, source=$AllowedSource)" -ForegroundColor Green
 } else {
     Write-Host "      Firewall rule already exists" -ForegroundColor Green
 }
@@ -164,6 +189,12 @@ if ($svc.Status -eq "Running") {
     }
     Write-Host "  Config    : $configPath"
     Write-Host "  Logs      : $InstallDir\logs\"
+    if ($generatedApiKey) {
+        Write-Host ""
+        Write-Host "  API KEY   : $generatedApiKey" -ForegroundColor Cyan
+        Write-Host "  Configure reception to send it as the 'X-Api-Key' header." -ForegroundColor Yellow
+        Write-Host "  (Local/loopback calls and the test UI on this PC don't need it.)"
+    }
     Write-Host ""
     Write-Host "  NEXT: Edit config.json with your device IPs, then restart:" -ForegroundColor Yellow
     Write-Host "    sc.exe stop $ServiceName; sc.exe start $ServiceName"

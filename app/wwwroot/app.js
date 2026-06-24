@@ -599,22 +599,30 @@ const actions = {
     show("out-door", ok, ok ? body.message : (body.error || body));
   },
 
-  // Cached (no live device round-trip — served from the background-maintained stores)
+  // Cached — served from the background-maintained stores. When the store has no
+  // entry yet (fresh boot, device the poller hasn't reached) these fall back to a
+  // live read so the tab always shows real data like the Users tab; the response
+  // is labelled "live" vs "cached" so you can see which path answered. The
+  // Reception-facing v1 contract is unchanged — the fallback is UI-only.
   async "status-cached"(btn) {
     show("out-status-cached", true, "Reading cached status...");
     const { ok, body } = await callJson("/api/v1/status/cached", deviceOverrides());
     if (!ok) return show("out-status-cached", false, body.error || body);
-    const d = body.data;
-    if (d.cached === false)
-      return showHtml("out-status-cached", true,
-        `<p>No cached entry yet for <code>${d.device}</code> — the background poller hasn't recorded this device.</p>`);
+    let d = body.data, live = false;
+    if (d.cached === false) {
+      const r = await callJson("/api/v1/status", deviceOverrides());
+      if (!r.ok || !r.body.data)
+        return showHtml("out-status-cached", false,
+          `<p>No cached entry for <code>${d.device}</code> and the live probe failed: ${(r.body && r.body.error) || "unknown error"}.</p>`);
+      d = r.body.data; live = true;
+    }
     showHtml("out-status-cached", true, `<table><tbody>
       <tr><th>Device</th><td>${d.device}</td></tr>
       <tr><th>Status</th><td>${d.online ? "online" : "offline"}</td></tr>
-      <tr><th>Cached / stale</th><td>${d.cached} / ${d.stale}</td></tr>
-      <tr><th>Checked at</th><td>${d.checkedAt} (${d.ageSeconds}s ago)</td></tr>
+      <tr><th>Source</th><td>${live ? '<span class="badge">live — cache was empty</span>' : `cached · stale: ${d.stale}`}</td></tr>
+      ${live ? "" : `<tr><th>Checked at</th><td>${d.checkedAt} (${d.ageSeconds}s ago)</td></tr>`}
       <tr><th>Serial / firmware</th><td>${d.serial ?? "-"} / ${d.firmware ?? "-"}</td></tr>
-      <tr><th>Circuit open</th><td>${d.circuitOpen ?? "-"} (fails: ${d.consecutiveFailures ?? "-"})</td></tr>
+      ${live ? "" : `<tr><th>Circuit open</th><td>${d.circuitOpen ?? "-"} (fails: ${d.consecutiveFailures ?? "-"})</td></tr>`}
       ${d.error ? `<tr><th>Error</th><td>${d.error}</td></tr>` : ""}
     </tbody></table>`);
   },
@@ -623,17 +631,26 @@ const actions = {
     show("out-users-cached", true, "Reading cached user list...");
     const { ok, body } = await callJson("/api/v1/users/cached", deviceOverrides());
     if (!ok) return show("out-users-cached", false, body.error || body);
-    const d = body.data;
-    if (d.cached === false)
-      return showHtml("out-users-cached", true,
-        `<p>No cached list yet for <code>${d.device}</code> (<code>stale: true</code>) — reception would read live.</p>`);
+    let d = body.data, live = false;
+    if (d.cached === false) {
+      // Cache not warm yet — fall back to the live users+groups read (the
+      // background refresh will warm the cache shortly).
+      const r = await callJson("/api/v1/users/groups", deviceOverrides());
+      if (!r.ok || !r.body.data)
+        return showHtml("out-users-cached", false,
+          `<p>No cached list for <code>${d.device}</code> and the live read failed: ${(r.body && r.body.error) || "unknown error"}.</p>`);
+      d = r.body.data; live = true;
+    }
     const rows = d.users.map((u) =>
       `<tr><td>${u.enrollNumber}</td><td>${u.name || ""}</td><td>${u.privilege}</td><td>${u.enabled ? "yes" : "no"}</td><td>${u.groupNo ?? "-"}</td></tr>`
     ).join("");
+    const meta = live
+      ? `Total: ${d.count} · <span class="badge">live — cache was empty</span>`
+      : `Total: ${d.count} · stale: ${d.stale} · checked ${d.checkedAt}`;
     showHtml("out-users-cached", true, `<table>
       <thead><tr><th>Enroll #</th><th>Name</th><th>Privilege</th><th>Enabled</th><th>Group</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="5">No users</td></tr>'}</tbody>
-    </table><p style="margin:8px 0 0;color:var(--muted)">Total: ${d.count} · stale: ${d.stale} · checked ${d.checkedAt}</p>`);
+    </table><p style="margin:8px 0 0;color:var(--muted)">${meta}</p>`);
   },
 
   async "group-cached"(btn) {
@@ -645,9 +662,16 @@ const actions = {
     const d = body.data;
     if (d.cached && d.userGroup)
       return showHtml("out-group-cached", true,
-        `<p>PIN <code>${d.userGroup.enrollNumber}</code> → group <strong>${d.userGroup.groupNo}</strong> (cached, fresh).</p>`);
-    showHtml("out-group-cached", true,
-      `<p>Cache miss / stale for <code>${enroll}</code> on <code>${d.device}</code> — reception would fall back to the live <code>/users/group/get</code>.</p>`);
+        `<p>PIN <code>${d.userGroup.enrollNumber}</code> → group <strong>${d.userGroup.groupNo}</strong> <span class="badge">cached, fresh</span></p>`);
+    // Cache miss / stale — fall back to the live read like reception would.
+    const r = await callJson("/api/v1/users/group/get", { ...deviceOverrides(), enrollNumber: enroll });
+    if (r.ok && r.body.data && r.body.data.userGroup) {
+      const ug = r.body.data.userGroup;
+      return showHtml("out-group-cached", true,
+        `<p>PIN <code>${ug.enrollNumber}</code> → group <strong>${ug.groupNo}</strong> <span class="badge">live — cache miss/stale</span></p>`);
+    }
+    showHtml("out-group-cached", false,
+      `<p>Cache miss for <code>${enroll}</code> on <code>${d.device}</code> and the live read failed: ${(r.body && r.body.error) || "unknown error"}.</p>`);
   },
 };
 

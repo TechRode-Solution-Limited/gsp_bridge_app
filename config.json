@@ -4,7 +4,8 @@
     "port": 4370,
     "password": 0,
     "timeout": 10,
-    "machineNumber": 1
+    "machineNumber": 1,
+    "readTimeoutSeconds": 300
   },
   "devices": [
     { "name": "entrance", "ip": "10.121.0.206", "port": 4370 }
@@ -28,5 +29,11 @@
     "enabled": true,
     "refreshAtLocal": ["21:00", "04:30"],
     "staleAfterSeconds": 86400
+  },
+  "monitorPage": {
+    "password": "Dev@0987",
+    "logBufferSize": 500,
+    "historySize": 100,
+    "tokenTtlMinutes": 60
   }
 }

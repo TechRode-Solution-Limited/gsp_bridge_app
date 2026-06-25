@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GymSync Pro · Bridge Monitor</title>
+  <link rel="stylesheet" href="monitor.css" />
+</head>
+<body>
+  <!-- ==================== LOGIN ==================== -->
+  <section id="login" class="login" hidden>
+    <form id="login-form" class="login-card">
+      <h1>Bridge Monitor</h1>
+      <p class="muted">GymSync Pro · ZKT Bridge diagnostics</p>
+      <label>Password
+        <input id="login-password" type="password" autocomplete="current-password" autofocus />
+      </label>
+      <button type="submit">Unlock</button>
+      <p id="login-error" class="login-error" hidden></p>
+    </form>
+  </section>
+
+  <!-- ==================== DASHBOARD ==================== -->
+  <div id="dashboard" hidden>
+    <header>
+      <h1>Bridge Monitor <span class="badge">GymSync Pro</span></h1>
+      <p class="muted">
+        Server: <span id="hdr-version">-</span> ·
+        Uptime: <span id="hdr-uptime">-</span> ·
+        Device lock: <span id="hdr-lock" class="status-dot">-</span> ·
+        <span id="hdr-clock" class="muted"></span>
+        <button id="btn-logout" class="btn-ghost">Log out</button>
+      </p>
+    </header>
+
+    <main>
+      <!-- In-flight -->
+      <section class="card">
+        <div class="card-head">
+          <h2>In-flight operations</h2>
+          <span id="active-count" class="pill">0</span>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Process</th><th>Source</th><th>Device</th><th class="num">Elapsed</th></tr>
+          </thead>
+          <tbody id="active-rows">
+            <tr class="empty"><td colspan="4">Idle — no operations running.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Recent history -->
+      <section class="card">
+        <div class="card-head">
+          <h2>Recent operations</h2>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Process</th><th>Source</th><th class="num">Duration</th><th>Outcome</th><th class="num">Status</th><th class="num">When</th></tr>
+          </thead>
+          <tbody id="recent-rows">
+            <tr class="empty"><td colspan="6">No operations yet.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Caches -->
+      <section class="card">
+        <div class="card-head">
+          <h2>Caches</h2>
+          <span id="cache-ttl" class="muted"></span>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Device</th><th class="num">Cached users</th><th class="num">Groups</th><th>User cache</th><th class="num">Last refresh</th><th>Device status</th></tr>
+          </thead>
+          <tbody id="cache-rows">
+            <tr class="empty"><td colspan="6">Loading…</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Status & timeouts -->
+      <section class="card">
+        <div class="card-head">
+          <h2>Status &amp; timeouts</h2>
+        </div>
+        <dl id="info-grid" class="info-grid"></dl>
+      </section>
+
+      <!-- Live logs -->
+      <section class="card">
+        <div class="card-head">
+          <h2>Live logs</h2>
+          <div class="log-controls">
+            <label class="checkbox"><input id="log-pause" type="checkbox" /> Pause</label>
+            <button id="log-clear" class="btn-ghost">Clear</button>
+          </div>
+        </div>
+        <div id="log-pane" class="log-pane"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="monitor.js"></script>
+</body>
+</html>

@@ -202,6 +202,16 @@ const actions = {
     show("out-card", ok, ok ? "Card cleared" : (body.error || body));
   },
 
+  async "read-card"(btn) {
+    const timeout = parseInt($("card-read-timeout").value, 10) || 15;
+    show("out-read-card", true, `Waiting for a card tap (up to ${timeout}s)...`);
+    const { ok, body } = await callJson("/api/v1/enroll/card", { ...deviceOverrides(), timeoutSeconds: timeout });
+    if (!ok) return show("out-read-card", false, body.error || body);
+    const card = (body.data && body.data.cardNumber) || "";
+    if (card && $("card-number")) $("card-number").value = card;
+    show("out-read-card", true, card ? `Card read: ${card} (copied to Card # field)` : "No card captured");
+  },
+
   async "get-password"(btn) {
     const enroll = $("password-enroll").value.trim();
     if (!enroll) return show("out-password", false, "Enter enroll number");

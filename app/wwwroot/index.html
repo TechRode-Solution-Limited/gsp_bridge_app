@@ -29,6 +29,7 @@
   <nav class="tabs">
     <button class="tab active" data-tab="users">Users</button>
     <button class="tab" data-tab="enrollment">Enrollment</button>
+    <button class="tab" data-tab="cards">Cards</button>
     <button class="tab" data-tab="templates">Templates</button>
     <button class="tab" data-tab="attendance">Attendance</button>
     <button class="tab" data-tab="device">Device</button>
@@ -86,18 +87,6 @@
           <button data-action="update-user">Update</button>
         </div>
         <div class="output" id="out-update-user"></div>
-      </section>
-
-      <section class="card">
-        <h2>Card number</h2>
-        <div class="inline">
-          <label>Enroll # <input id="card-enroll" placeholder="e.g. 1001" /></label>
-          <label>Card # <input id="card-number" placeholder="e.g. 0008675309" /></label>
-          <button data-action="get-card">Get card</button>
-          <button data-action="set-card">Set card</button>
-          <button data-action="clear-card" class="btn-danger">Clear</button>
-        </div>
-        <div class="output" id="out-card"></div>
       </section>
 
       <section class="card">
@@ -202,6 +191,32 @@
           <button data-action="enroll-face">Start enrollment</button>
         </div>
         <div class="output" id="out-enroll-face"></div>
+      </section>
+    </div>
+
+    <!-- ==================== CARDS TAB ==================== -->
+    <div class="tab-pane" id="tab-cards">
+      <section class="card">
+        <h2>Read card (tap)</h2>
+        <p class="muted">Arms the reader and waits for a card to be <strong>tapped on the device</strong>, then returns its number — so a free-access card can be captured without typing. The captured number is dropped into the "Card #" field below. Returns 422 if the device firmware can't capture a card (enter the number manually instead).</p>
+        <div class="inline">
+          <label>Timeout (s) <input id="card-read-timeout" type="number" min="5" max="30" value="15" /></label>
+          <button data-action="read-card">Tap card to read</button>
+        </div>
+        <div class="output" id="out-read-card"></div>
+      </section>
+
+      <section class="card">
+        <h2>User card number</h2>
+        <p class="muted">Read, assign or clear the RFID card number stored on an existing device user.</p>
+        <div class="inline">
+          <label>Enroll # <input id="card-enroll" placeholder="e.g. 1001" /></label>
+          <label>Card # <input id="card-number" placeholder="e.g. 0008675309" /></label>
+          <button data-action="get-card">Get card</button>
+          <button data-action="set-card">Set card</button>
+          <button data-action="clear-card" class="btn-danger">Clear</button>
+        </div>
+        <div class="output" id="out-card"></div>
       </section>
     </div>
 

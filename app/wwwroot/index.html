@@ -198,9 +198,10 @@
     <div class="tab-pane" id="tab-cards">
       <section class="card">
         <h2>Read card (tap)</h2>
-        <p class="muted">Arms the reader and waits for a card to be <strong>tapped on the device</strong>, then returns its number — so a free-access card can be captured without typing. The captured number is dropped into the "Card #" field below. Returns 422 if the device firmware can't capture a card (enter the number manually instead).</p>
+        <p class="muted">Arms the reader and waits for a card to be <strong>tapped on the device</strong>, then returns its number — so a free-access card can be captured without typing. If the card is <strong>already registered</strong> to a device user, it also shows who (name + PIN). Reading needs no user; fill <strong>Assign to Enroll #</strong> only if you want the captured card written onto that user in the same tap. The captured number is dropped into the "Card #" field below. Times out if the firmware streams no card event (enter the number manually instead).</p>
         <div class="inline">
           <label>Timeout (s) <input id="card-read-timeout" type="number" min="5" max="30" value="15" /></label>
+          <label>Assign to Enroll # (optional) <input id="card-read-assign" placeholder="leave blank to just read" /></label>
           <button data-action="read-card">Tap card to read</button>
         </div>
         <div class="output" id="out-read-card"></div>
@@ -217,6 +218,15 @@
           <button data-action="clear-card" class="btn-danger">Clear</button>
         </div>
         <div class="output" id="out-card"></div>
+      </section>
+
+      <section class="card">
+        <h2>All cards on device</h2>
+        <p class="muted">Lists every device user that has an RFID card assigned.</p>
+        <div class="inline">
+          <button data-action="list-cards">List all cards</button>
+        </div>
+        <div class="output" id="out-list-cards"></div>
       </section>
     </div>
 

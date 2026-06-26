@@ -202,14 +202,43 @@ const actions = {
     show("out-card", ok, ok ? "Card cleared" : (body.error || body));
   },
 
+  async "list-cards"(btn) {
+    show("out-list-cards", true, "Fetching cards...");
+    const { ok, body } = await callJson("/api/v1/users/cards", deviceOverrides());
+    if (!ok) return show("out-list-cards", false, (body.data && body.data.error) || body.error || body);
+    const cards = (body.data && body.data.cards) || [];
+    const rows = cards.map((c) =>
+      `<tr><td>${c.cardNumber}</td><td>${c.enrollNumber}</td><td>${c.name || ""}</td><td>${c.enabled ? "yes" : "no"}</td></tr>`
+    ).join("");
+    showHtml("out-list-cards", true, `<table>
+      <thead><tr><th>Card #</th><th>Enroll #</th><th>Name</th><th>Enabled</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4">No cards assigned</td></tr>'}</tbody>
+    </table><p style="margin:8px 0 0;color:var(--muted)">Total: ${(body.data && body.data.count) || 0} cards</p>`);
+  },
+
   async "read-card"(btn) {
     const timeout = parseInt($("card-read-timeout").value, 10) || 15;
+    const assignTo = ($("card-read-assign").value || "").trim();
+    const req = { ...deviceOverrides(), timeoutSeconds: timeout };
+    if (assignTo) req.enrollNumber = assignTo;
     show("out-read-card", true, `Waiting for a card tap (up to ${timeout}s)...`);
-    const { ok, body } = await callJson("/api/v1/enroll/card", { ...deviceOverrides(), timeoutSeconds: timeout });
+    const { ok, body } = await callJson("/api/v1/enroll/card", req);
     if (!ok) return show("out-read-card", false, body.error || body);
-    const card = (body.data && body.data.cardNumber) || "";
+    const d = body.data || {};
+    const card = d.cardNumber || "";
     if (card && $("card-number")) $("card-number").value = card;
-    show("out-read-card", true, card ? `Card read: ${card} (copied to Card # field)` : "No card captured");
+    if (!card) return show("out-read-card", true, "No card captured");
+
+    let msg;
+    if (d.registered) {
+      const who = d.registeredName ? `${d.registeredName} (PIN ${d.registeredPin})` : `PIN ${d.registeredPin}`;
+      if ($("card-enroll")) $("card-enroll").value = d.registeredPin;
+      msg = `Card ${card} — already registered to ${who}.`;
+    } else {
+      msg = `Card ${card} — not registered (new card).`;
+    }
+    if (d.assignedTo) msg += ` Assigned to enroll #${d.assignedTo}.`;
+    show("out-read-card", true, msg);
   },
 
   async "get-password"(btn) {

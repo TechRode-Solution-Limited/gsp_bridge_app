@@ -60,6 +60,20 @@ if (-not (Test-Path "$appSource\GymSync.Zkt.WebUI.exe")) {
 }
 Copy-Item -Path "$appSource\*" -Destination $InstallDir -Recurse -Force
 
+# Leave the connection tester on the box so it can be run later without the
+# installer bundle (it reads $InstallDir\config.json by default).
+$testerSource = Join-Path $scriptDir "test-connection.ps1"
+if (Test-Path $testerSource) {
+    Copy-Item $testerSource "$InstallDir\test-connection.ps1" -Force
+    @"
+@echo off
+powershell -NoProfile -STA -ExecutionPolicy Bypass -File "%~dp0test-connection.ps1" %*
+echo.
+pause
+"@ | Set-Content "$InstallDir\TEST-CONNECTION.bat" -Encoding ASCII
+    Write-Host "      Connection tester installed: $InstallDir\TEST-CONNECTION.bat"
+}
+
 # --- Step 4: Copy SDK and register COM DLL ---
 Write-Host "[4/7] Registering ZKTeco COM SDK..." -ForegroundColor Yellow
 $sdkSource = Join-Path $scriptDir "sdk"
@@ -198,6 +212,9 @@ if ($svc.Status -eq "Running") {
     Write-Host ""
     Write-Host "  NEXT: Edit config.json with your device IPs, then restart:" -ForegroundColor Yellow
     Write-Host "    sc.exe stop $ServiceName; sc.exe start $ServiceName"
+    Write-Host ""
+    Write-Host "  Then verify every configured device:" -ForegroundColor Yellow
+    Write-Host "    $InstallDir\TEST-CONNECTION.bat"
     Write-Host ""
 } else {
     Write-Host ""

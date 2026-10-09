@@ -125,6 +125,18 @@ function groupCell(groupNo) {
   return `${groupNo} (${access})`;
 }
 
+// Why a read wasn't complete: the first few reasons and how many more there are.
+function incompleteReasons(errors) {
+  const list = errors || [];
+  const shown = list.slice(0, 5).map(esc).join("; ");
+  return list.length > 5 ? `${shown}; … (${list.length - 5} more)` : shown || "no reason given";
+}
+
+// Some firmware lists users with an empty enroll number; show them, not an empty cell.
+function pinCell(pin) {
+  return pin ? esc(pin) : '<span class="muted" title="The device returned this user with an empty enroll number">(blank)</span>';
+}
+
 // Last /users/live result, so "Show mismatches only" re-filters without another device read.
 let lastUsersLive = null;
 
@@ -136,13 +148,13 @@ function renderUsersLive() {
   const rows = d.users
     .filter((u) => !driftOnly || u.drift !== "none")
     .map((u) =>
-      `<tr class="${u.drift === "none" ? "" : "drift"}"><td>${esc(u.enrollNumber)}${u.groupable === false ? ' <span title="This PIN can\'t be grouped (non-numeric or leading zero) — it can\'t be blocked by group">⚠</span>' : ""}</td><td>${esc(u.name ?? u.cachedName)}</td><td>${esc(u.privilege ?? "-")}</td><td>${groupCell(u.groupNo)}</td><td>${groupCell(u.cachedGroupNo)}</td><td>${DRIFT_LABEL[u.drift] || ""}</td></tr>`
+      `<tr class="${u.drift === "none" ? "" : "drift"}"><td>${pinCell(u.enrollNumber)}${u.groupable === false ? ' <span title="This PIN can\'t be grouped (non-numeric or leading zero) — it can\'t be blocked by group">⚠</span>' : ""}</td><td>${esc(u.name ?? u.cachedName)}</td><td>${esc(u.privilege ?? "-")}</td><td>${groupCell(u.groupNo)}</td><td>${groupCell(u.cachedGroupNo)}</td><td>${DRIFT_LABEL[u.drift] || ""}</td></tr>`
     ).join("");
   const cacheNote = d.hasCache
     ? `cache last read from device ${esc(d.cacheCheckedAt)}${d.cacheStale ? " (stale)" : ""}${d.cacheComplete ? "" : " (not verified complete)"}`
     : "no cached list for this device yet";
   const readNote = d.complete === false
-    ? `<p style="margin:0 0 8px;color:#842029"><strong>This live read is incomplete</strong> — ${esc((d.errors || []).slice(0, 3).join("; "))}</p>`
+    ? `<p style="margin:0 0 8px;color:#842029"><strong>This live read is incomplete</strong> — ${incompleteReasons(d.errors)}</p>`
     : "";
   showHtml("out-users-live", true, `${readNote}<p style="margin:0 0 8px">${freshnessChip("live")} <strong>${s.groupMismatch}</strong> group mismatches · ${s.onlyOnDevice} not in cache · ${s.onlyInCache} gone from device</p><table>
       <thead><tr><th>Enroll #</th><th>Name</th><th>Privilege</th><th>Group (device)</th><th>Group (cache)</th><th>Mismatch</th></tr></thead>
@@ -865,7 +877,7 @@ const actions = {
     if (body.data.complete)
       show("out-users-live", true, `Cache replaced from the device: ${body.data.count} users. Read users again to compare.`);
     else
-      show("out-users-live", false, `The read was NOT complete, so the cache was left alone: ${(body.data.errors || []).slice(0, 3).join("; ")}`);
+      showHtml("out-users-live", false, `The read was NOT complete, so the cache was left alone (${esc(body.data.count)} users read): ${incompleteReasons(body.data.errors)}. To fix one member now, use <strong>Update cache from device</strong> under "Live single user".`);
   },
 
   async "user-live"(btn) {
@@ -895,6 +907,35 @@ const actions = {
         ${row("Cache read at", "-", c ? `${esc(c.checkedAt)}${c.stale ? " (stale)" : ""}` : "-", false)}
       </tbody>
     </table><p style="margin:8px 0 0;color:var(--muted)">Access at the door follows the group, not the SSR enabled flag.</p>`);
+  },
+
+  // One PIN's cached record overwritten from the device (/users/refresh/one).
+  async "user-live-overwrite-cache"(btn) {
+    const enroll = $("user-live-enroll").value.trim();
+    if (!enroll) return show("out-user-live", false, "Enter enroll number");
+    if (!confirmDeviceRead(`Read PIN ${enroll} off the device and overwrite its cached record?`)) return;
+    show("out-user-live", true, "Reading user off the device and updating the cache...");
+    const { ok, body } = await callJson("/api/v1/users/refresh/one", { ...deviceOverrides(), enrollNumber: enroll });
+    if (!ok) return show("out-user-live", false, body.error || body);
+    const d = body.data, u = d.user;
+    if (!d.cacheUpdated)
+      return showHtml("out-user-live", false,
+        `There is no cached list for <code>${esc(d.device)}</code> yet, so nothing was written — use "Verify now" on the Cached tab to build one.`);
+    if (!d.found)
+      return showHtml("out-user-live", true,
+        `${freshnessChip("live")}<p>PIN <code>${esc(enroll)}</code> isn't on the device — removed from the cache.</p>`);
+    const groupNote = d.groupRead ? "" : u.groupable
+      ? '<p style="margin:8px 0 0;color:#842029">The device didn\'t report this user\'s group — cached as unknown, so reception falls back to a live read.</p>'
+      : '<p style="margin:8px 0 0;color:#842029">This PIN can\'t be grouped (non-numeric or leading zero), so the door can\'t be set by group.</p>';
+    const listNote = d.cacheComplete
+      ? `The rest of the list is unchanged (verified ${esc(d.cacheVerifiedAt ?? "never")}).`
+      : "Only this record was updated — the list as a whole is still not verified complete.";
+    showHtml("out-user-live", true, `<p style="margin:0 0 8px">${freshnessChip("ok")} Cache updated from the device.</p><table><tbody>
+      <tr><th>Enroll #</th><td>${pinCell(u.enrollNumber)}</td></tr>
+      <tr><th>Name</th><td>${esc(u.name || "-")}</td></tr>
+      <tr><th>Privilege</th><td>${esc(u.privilege)}</td></tr>
+      <tr><th>Group</th><td>${groupCell(u.groupNo)}</td></tr>
+    </tbody></table>${groupNote}<p style="margin:8px 0 0;color:var(--muted)">${listNote}</p>`);
   },
 };
 

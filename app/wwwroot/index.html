@@ -540,7 +540,7 @@
 
     <!-- ==================== LIVE TAB ==================== -->
     <!-- The device's own answer beside the cache's. Read-only: nothing here writes
-         the cache except the "Overwrite cache" button. -->
+         the cache except the two "Overwrite / Update cache" buttons. -->
     <div class="tab-pane" id="tab-live">
       <section class="card">
         <h2>Live user list (device vs cache)</h2>
@@ -555,10 +555,11 @@
 
       <section class="card">
         <h2>Live single user</h2>
-        <p class="muted" style="margin:0 0 10px">One PIN's name, privilege, group and card read off the device, beside its cached record.</p>
+        <p class="muted" style="margin:0 0 10px">One PIN's name, privilege, group and card read off the device, beside its cached record. "Update cache from device" overwrites just that PIN's cached record with what the device holds — for when the whole-list overwrite won't complete, or one member is known to be wrong.</p>
         <div class="inline">
           <label>Enroll # <input id="user-live-enroll" placeholder="e.g. 1001" /></label>
           <button data-action="user-live">Read user from device</button>
+          <button data-action="user-live-overwrite-cache">Update cache from device</button>
         </div>
         <div class="output" id="out-user-live"></div>
       </section>

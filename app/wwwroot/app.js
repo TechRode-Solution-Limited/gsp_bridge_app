@@ -68,6 +68,20 @@ function showHtml(elId, ok, html) {
   el.innerHTML = html;
 }
 
+// Anything that came off the device (names, PINs, cards, serials, error text) is
+// escaped before it goes into innerHTML — a user name is whatever someone typed
+// on the device keypad or into reception.
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+// Live reads hold the device (and, between chunks, keep coming back for it):
+// reception's calls queue behind them. Ask first.
+function confirmDeviceRead(what) {
+  return window.confirm(`${what}\n\nThis reads the device directly and holds the device while it runs — reception's calls (door access, enrolment, attendance) wait behind it. On a full device that can take minutes.\n\nContinue?`);
+}
+
 // Coloured freshness indicator for the Cached tab.
 //   ok    — served from cache, within TTL
 //   stale — served from cache but past TTL / restored-on-restart / busted by a write
@@ -92,6 +106,48 @@ async function callJson(path, body) {
   });
   const j = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
   return { ok: res.ok && j.ok !== false, body: j };
+}
+
+// ---- Live tab helpers ----
+
+// How the cache compares with the device, per row (UserCacheDrift on the server).
+const DRIFT_LABEL = {
+  none: "",
+  group: "group differs",
+  onlyOnDevice: "not in cache",
+  onlyInCache: "gone from device",
+};
+
+// Group 1 is the open group, group 2 the blocked ("never" time zone) one.
+function groupCell(groupNo) {
+  if (groupNo == null) return "-";
+  const access = groupNo === 1 ? "open" : groupNo === 2 ? "blocked" : "other";
+  return `${groupNo} (${access})`;
+}
+
+// Last /users/live result, so "Show mismatches only" re-filters without another device read.
+let lastUsersLive = null;
+
+function renderUsersLive() {
+  const d = lastUsersLive;
+  if (!d) return;
+  const driftOnly = $("users-live-drift-only").checked;
+  const s = d.summary;
+  const rows = d.users
+    .filter((u) => !driftOnly || u.drift !== "none")
+    .map((u) =>
+      `<tr class="${u.drift === "none" ? "" : "drift"}"><td>${esc(u.enrollNumber)}${u.groupable === false ? ' <span title="This PIN can\'t be grouped (non-numeric or leading zero) — it can\'t be blocked by group">⚠</span>' : ""}</td><td>${esc(u.name ?? u.cachedName)}</td><td>${esc(u.privilege ?? "-")}</td><td>${groupCell(u.groupNo)}</td><td>${groupCell(u.cachedGroupNo)}</td><td>${DRIFT_LABEL[u.drift] || ""}</td></tr>`
+    ).join("");
+  const cacheNote = d.hasCache
+    ? `cache last read from device ${esc(d.cacheCheckedAt)}${d.cacheStale ? " (stale)" : ""}${d.cacheComplete ? "" : " (not verified complete)"}`
+    : "no cached list for this device yet";
+  const readNote = d.complete === false
+    ? `<p style="margin:0 0 8px;color:#842029"><strong>This live read is incomplete</strong> — ${esc((d.errors || []).slice(0, 3).join("; "))}</p>`
+    : "";
+  showHtml("out-users-live", true, `${readNote}<p style="margin:0 0 8px">${freshnessChip("live")} <strong>${s.groupMismatch}</strong> group mismatches · ${s.onlyOnDevice} not in cache · ${s.onlyInCache} gone from device</p><table>
+      <thead><tr><th>Enroll #</th><th>Name</th><th>Privilege</th><th>Group (device)</th><th>Group (cache)</th><th>Mismatch</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="6">${driftOnly ? "No mismatches" : "No users"}</td></tr>`}</tbody>
+    </table><p style="margin:8px 0 0;color:var(--muted)">On device: ${s.onDevice} · in cache: ${s.inCache} · ${cacheNote}</p>`);
 }
 
 // ---- Actions ----
@@ -668,18 +724,18 @@ const actions = {
       const r = await callJson("/api/v1/status", deviceOverrides());
       if (!r.ok || !r.body.data)
         return showHtml("out-status-cached", false,
-          `${freshnessChip("miss")}<p>No cached entry for <code>${d.device}</code> and the live probe failed: ${(r.body && r.body.error) || "unknown error"}.</p>`);
+          `${freshnessChip("miss")}<p>No cached entry for <code>${esc(d.device)}</code> and the live probe failed: ${esc((r.body && r.body.error) || "unknown error")}.</p>`);
       d = r.body.data; live = true;
     }
     const chip = live ? freshnessChip("live") : freshnessChip(d.stale ? "stale" : "ok");
     showHtml("out-status-cached", true, `<p style="margin:0 0 8px">${chip}</p><table><tbody>
-      <tr><th>Device</th><td>${d.device}</td></tr>
+      <tr><th>Device</th><td>${esc(d.device)}</td></tr>
       <tr><th>Status</th><td>${d.online ? "online" : "offline"}</td></tr>
       <tr><th>Source</th><td>${live ? "live device read (cache was empty)" : `cache · stale: ${d.stale}`}</td></tr>
-      ${live ? "" : `<tr><th>Checked at</th><td>${d.checkedAt} (${d.ageSeconds}s ago)</td></tr>`}
-      <tr><th>Serial / firmware</th><td>${d.serial ?? "-"} / ${d.firmware ?? "-"}</td></tr>
-      ${live ? "" : `<tr><th>Circuit open</th><td>${d.circuitOpen ?? "-"} (fails: ${d.consecutiveFailures ?? "-"})</td></tr>`}
-      ${d.error ? `<tr><th>Error</th><td>${d.error}</td></tr>` : ""}
+      ${live ? "" : `<tr><th>Checked at</th><td>${esc(d.checkedAt)} (${esc(d.ageSeconds)}s ago)</td></tr>`}
+      <tr><th>Serial / firmware</th><td>${esc(d.serial ?? "-")} / ${esc(d.firmware ?? "-")}</td></tr>
+      ${live ? "" : `<tr><th>Circuit open</th><td>${esc(d.circuitOpen ?? "-")} (fails: ${esc(d.consecutiveFailures ?? "-")})</td></tr>`}
+      ${d.error ? `<tr><th>Error</th><td>${esc(d.error)}</td></tr>` : ""}
     </tbody></table>`);
   },
 
@@ -689,21 +745,27 @@ const actions = {
     if (!ok) return show("out-users-cached", false, body.error || body);
     let d = body.data, live = false;
     if (d.cached === false) {
-      // Cache not warm yet — fall back to the live users+groups read (the
-      // background refresh will warm the cache shortly).
+      // Cache not warm yet — offer the live users+groups read (it holds the
+      // device; the background refresh / "Verify now" is the lighter path).
+      if (!confirmDeviceRead(`No cached list for ${d.device} yet. Read every user and group off the device now?`))
+        return showHtml("out-users-cached", false,
+          `${freshnessChip("miss")}<p>No cached list for <code>${esc(d.device)}</code> yet. Use <strong>Verify now</strong> to have the background refresh read it.</p>`);
       const r = await callJson("/api/v1/users/groups", deviceOverrides());
       if (!r.ok || !r.body.data)
         return showHtml("out-users-cached", false,
-          `${freshnessChip("miss")}<p>No cached list for <code>${d.device}</code> and the live read failed: ${(r.body && r.body.error) || "unknown error"}.</p>`);
+          `${freshnessChip("miss")}<p>No cached list for <code>${esc(d.device)}</code> and the live read failed: ${esc((r.body && r.body.error) || "unknown error")}.</p>`);
       d = r.body.data; live = true;
     }
     const chip = live ? freshnessChip("live") : freshnessChip(d.stale ? "stale" : "ok");
     const rows = d.users.map((u) =>
-      `<tr><td>${u.enrollNumber}</td><td>${u.name || ""}</td><td>${u.privilege}</td><td>${u.enabled ? "yes" : "no"}</td><td>${u.groupNo ?? "-"}</td></tr>`
+      `<tr><td>${esc(u.enrollNumber)}</td><td>${esc(u.name || "")}</td><td>${esc(u.privilege)}</td><td>${u.enabled ? "yes" : "no"}</td><td>${esc(u.groupNo ?? "-")}</td></tr>`
     ).join("");
+    const completeNote = d.complete
+      ? "complete (validated against the device's user count, every group read)"
+      : "<strong>not verified complete</strong> — reception treats this list as unverified";
     const meta = live
-      ? `Total: ${d.count} · live device read (cache was empty)`
-      : `Total: ${d.count} · checked ${d.checkedAt}`;
+      ? `Total: ${esc(d.count)} · live device read (cache was empty) · ${d.complete ? "complete" : "<strong>incomplete</strong>"}`
+      : `Total: ${esc(d.count)} · checked ${esc(d.checkedAt)} · verified ${esc(d.verifiedAt ?? "never")} · ${completeNote}`;
     showHtml("out-users-cached", true, `<p style="margin:0 0 8px">${chip}</p><table>
       <thead><tr><th>Enroll #</th><th>Name</th><th>Privilege</th><th>Enabled</th><th>Group</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="5">No users</td></tr>'}</tbody>
@@ -718,26 +780,28 @@ const actions = {
     if (!ok) return show("out-user-cached", false, body.error || body);
     let d = body.data, u = d.user, live = false;
     if (!d.cached || d.stale || !d.found) {
-      // Cache empty / stale / PIN not in the cached list — fall back to a live read.
-      const r = await callJson("/api/v1/users/get", { ...deviceOverrides(), enrollNumber: enroll });
-      if (r.ok && r.body.data && r.body.data.user) {
-        const lu = r.body.data.user;
-        u = { enrollNumber: lu.enrollNumber, name: lu.name, privilege: lu.privilege, enabled: lu.enabled, groupNo: null };
+      // Cache empty / stale / PIN not in the cached list — fall back to a live
+      // read that includes the group (/users/get has none).
+      const r = await callJson("/api/v1/users/live/get", { ...deviceOverrides(), enrollNumber: enroll });
+      if (r.ok && r.body.data && r.body.data.live) {
+        const lu = r.body.data.live;
+        u = { enrollNumber: lu.enrollNumber, name: lu.name, privilege: lu.privilege, enabled: lu.enabled, groupNo: lu.groupNo };
         live = true;
       } else if (!u) {
+        const why = r.ok && r.body.data ? "it isn't on the device" : `the live read failed: ${(r.body && r.body.error) || "unknown error"}`;
         return showHtml("out-user-cached", false,
-          `${freshnessChip("miss")}<p>User <code>${enroll}</code> not in cache for <code>${d.device}</code>, and the live read failed: ${(r.body && r.body.error) || "unknown error"}.</p>`);
+          `${freshnessChip("miss")}<p>User <code>${esc(enroll)}</code> not in cache for <code>${esc(d.device)}</code>, and ${esc(why)}.</p>`);
       }
       // else: live read failed but a (stale) cached record exists — show it below.
     }
     const chip = live ? freshnessChip("live") : freshnessChip(d.stale ? "stale" : "ok");
     showHtml("out-user-cached", true, `<p style="margin:0 0 8px">${chip}</p><table><tbody>
-      <tr><th>Enroll #</th><td>${u.enrollNumber}</td></tr>
-      <tr><th>Name</th><td>${u.name || "-"}</td></tr>
-      <tr><th>Privilege</th><td>${u.privilege}</td></tr>
+      <tr><th>Enroll #</th><td>${esc(u.enrollNumber)}</td></tr>
+      <tr><th>Name</th><td>${esc(u.name || "-")}</td></tr>
+      <tr><th>Privilege</th><td>${esc(u.privilege)}</td></tr>
       <tr><th>Enabled</th><td>${u.enabled ? "yes" : "no"}</td></tr>
-      <tr><th>Group</th><td>${u.groupNo ?? "-"}</td></tr>
-      ${live ? "" : `<tr><th>Checked at</th><td>${d.checkedAt}</td></tr>`}
+      <tr><th>Group</th><td>${esc(u.groupNo ?? "-")}</td></tr>
+      ${live ? "" : `<tr><th>Checked at</th><td>${esc(d.checkedAt)}</td></tr>`}
     </tbody></table>`);
   },
 
@@ -750,18 +814,125 @@ const actions = {
     const d = body.data;
     if (d.cached && d.userGroup)
       return showHtml("out-group-cached", true,
-        `<p style="margin:0 0 8px">${freshnessChip("ok")}</p><p>PIN <code>${d.userGroup.enrollNumber}</code> → group <strong>${d.userGroup.groupNo}</strong></p>`);
+        `<p style="margin:0 0 8px">${freshnessChip("ok")}</p><p>PIN <code>${esc(d.userGroup.enrollNumber)}</code> → group <strong>${esc(d.userGroup.groupNo)}</strong></p>`);
     // Cache miss / stale — fall back to the live read like reception would.
     const r = await callJson("/api/v1/users/group/get", { ...deviceOverrides(), enrollNumber: enroll });
     if (r.ok && r.body.data && r.body.data.userGroup) {
       const ug = r.body.data.userGroup;
       return showHtml("out-group-cached", true,
-        `<p style="margin:0 0 8px">${freshnessChip("live")}</p><p>PIN <code>${ug.enrollNumber}</code> → group <strong>${ug.groupNo}</strong> <span style="color:var(--muted)">(cache miss/stale — read live)</span></p>`);
+        `<p style="margin:0 0 8px">${freshnessChip("live")}</p><p>PIN <code>${esc(ug.enrollNumber)}</code> → group <strong>${esc(ug.groupNo)}</strong> <span style="color:var(--muted)">(cache miss/stale — read live)</span></p>`);
     }
     showHtml("out-group-cached", false,
-      `${freshnessChip("miss")}<p>Cache miss for <code>${enroll}</code> on <code>${d.device}</code> and the live read failed: ${(r.body && r.body.error) || "unknown error"}.</p>`);
+      `${freshnessChip("miss")}<p>Cache miss for <code>${esc(enroll)}</code> on <code>${esc(d.device)}</code> and the live read failed: ${esc((r.body && r.body.error) || "unknown error")}.</p>`);
+  },
+
+  // "Verify now": queue a chunked background refresh of this device's cached list
+  // (POST /users/refresh → 202) and follow its progress. The cache is replaced
+  // only if the read is complete.
+  async "users-verify"(btn) {
+    show("out-users-verify", true, "Asking the Bridge to verify the cached list...");
+    const { ok, body } = await callJson("/api/v1/users/refresh", deviceOverrides());
+    if (!ok) return show("out-users-verify", false, body.error || body);
+    const q = body.data;
+    show("out-users-verify", true, q.inProgress
+      ? `A refresh of ${q.device} is already running — following it...`
+      : `Queued a refresh of ${q.device} — following it...`);
+    await followRefresh();
+  },
+
+  async "users-verify-status"(btn) {
+    await renderRefreshStatus();
+  },
+
+  // ---- Live tab — the device's answer beside the cache's ----
+
+  async "users-live"(btn) {
+    if (!confirmDeviceRead("Read every user and access group off the device?")) return;
+    show("out-users-live", true, "Reading users and groups off the device in chunks (one group read per user)...");
+    const { ok, body } = await callJson("/api/v1/users/live", deviceOverrides());
+    if (!ok) return show("out-users-live", false, body.error || body);
+    lastUsersLive = body.data;
+    renderUsersLive();
+  },
+
+  // /users/groups is the live read that also replaces the cached list.
+  async "users-live-overwrite-cache"(btn) {
+    if (!confirmDeviceRead("Read the whole device in ONE hold and replace the cached list (only if the read is complete)?")) return;
+    show("out-users-live", true, "Reading the device and replacing the cached list...");
+    const { ok, body } = await callJson("/api/v1/users/groups", deviceOverrides());
+    if (!ok) return show("out-users-live", false, body.error || body);
+    lastUsersLive = null;
+    if (body.data.complete)
+      show("out-users-live", true, `Cache replaced from the device: ${body.data.count} users. Read users again to compare.`);
+    else
+      show("out-users-live", false, `The read was NOT complete, so the cache was left alone: ${(body.data.errors || []).slice(0, 3).join("; ")}`);
+  },
+
+  async "user-live"(btn) {
+    const enroll = $("user-live-enroll").value.trim();
+    if (!enroll) return show("out-user-live", false, "Enter enroll number");
+    if (!confirmDeviceRead(`Read PIN ${enroll} off the device?`)) return;
+    show("out-user-live", true, "Reading user off the device...");
+    const { ok, body } = await callJson("/api/v1/users/live/get", { ...deviceOverrides(), enrollNumber: enroll });
+    if (!ok) return show("out-user-live", false, body.error || body);
+    const d = body.data, l = d.live, c = d.cached;
+    const yesNo = (v) => (v == null ? "-" : v ? "yes" : "no");
+    const row = (label, device, cache, mismatch) =>
+      `<tr class="${mismatch ? "drift" : ""}"><th>${label}</th><td>${device}</td><td>${cache}</td></tr>`;
+    const verdict = d.drift === "none"
+      ? (c ? "Cache matches the device." : "The cache doesn't hold this PIN.")
+      : `Cache disagrees with the device: ${DRIFT_LABEL[d.drift]}.`;
+    showHtml("out-user-live", true, `<p style="margin:0 0 8px">${freshnessChip("live")} ${verdict}</p><table>
+      <thead><tr><th></th><th>Device</th><th>Cache</th></tr></thead>
+      <tbody>
+        ${row("Present", yesNo(d.found), yesNo(c != null), d.drift === "onlyOnDevice" || d.drift === "onlyInCache")}
+        ${row("Name", esc(l?.name) || "-", esc(c?.name) || "-", false)}
+        ${row("Privilege", esc(l?.privilege ?? "-"), esc(c?.privilege ?? "-"), false)}
+        ${row("Group", groupCell(l?.groupNo), groupCell(c?.groupNo), d.drift === "group")}
+        ${row("SSR enabled flag", yesNo(l?.enabled), yesNo(c?.enabled), false)}
+        ${row("Card", esc(l?.cardNumber) || "-", "-", false)}
+        ${row("Groupable PIN", l ? (l.groupable ? "yes" : "no — can't be blocked by group") : "-", "-", l ? !l.groupable : false)}
+        ${row("Cache read at", "-", c ? `${esc(c.checkedAt)}${c.stale ? " (stale)" : ""}` : "-", false)}
+      </tbody>
+    </table><p style="margin:8px 0 0;color:var(--muted)">Access at the door follows the group, not the SSR enabled flag.</p>`);
   },
 };
+
+$("users-live-drift-only").addEventListener("change", renderUsersLive);
+
+// ---- "Verify now" status ----
+
+async function renderRefreshStatus() {
+  const { ok, body } = await callJson("/api/v1/users/refresh/status", deviceOverrides());
+  if (!ok) { show("out-users-verify", false, body.error || body); return null; }
+  const d = body.data;
+  const chip = d.inProgress ? freshnessChip("live") : freshnessChip(d.complete ? "ok" : "stale");
+  const progress = d.inProgress
+    ? `${esc(d.progress.done)} / ${esc(d.progress.total)} PINs`
+    : "-";
+  showHtml("out-users-verify", !d.lastError || d.inProgress, `<p style="margin:0 0 8px">${chip}</p><table><tbody>
+    <tr><th>Device</th><td>${esc(d.device)}</td></tr>
+    <tr><th>Last verified</th><td>${esc(d.verifiedAt ?? "never")}</td></tr>
+    <tr><th>Complete</th><td>${d.complete ? "yes" : "no"}</td></tr>
+    <tr><th>Refresh running</th><td>${d.inProgress ? "yes" : "no"}</td></tr>
+    <tr><th>Progress</th><td>${progress}</td></tr>
+    <tr><th>Last error</th><td>${esc(d.lastError ?? "-")}</td></tr>
+  </tbody></table>`);
+  return d;
+}
+
+// Poll the status every 2 s for up to 10 minutes, until no refresh is queued or running.
+async function followRefresh() {
+  const started = Date.now();
+  let sawRunning = false;
+  while (Date.now() - started < 10 * 60 * 1000) {
+    const d = await renderRefreshStatus();
+    if (!d) return;
+    if (d.inProgress) sawRunning = true;
+    else if (sawRunning || Date.now() - started > 90 * 1000) return;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
 
 // ---- Event delegation ----
 

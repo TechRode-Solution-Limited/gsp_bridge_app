@@ -231,6 +231,7 @@ button:disabled { opacity: 0.4; cursor: wait; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--panel-border); }
 th { color: var(--muted); font-weight: 500; }
+tr.drift td { background: rgba(255, 107, 107, 0.12); }
 
 /* Info grid for device info */
 .info-grid {

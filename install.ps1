@@ -10,14 +10,78 @@ param(
     # plane off the wider network / any bridged guest WiFi; pass the reception PC's
     # IP (or a comma-separated list) to lock it down further, or "Any" to allow all.
     [string]$AllowedSource = "LocalSubnet",
-    # API key written into a freshly-generated config.json so LAN callers must send
-    # X-Api-Key. Leave blank to auto-generate one (printed at the end). Loopback
-    # callers (the local test UI) are always exempt. Ignored if config.json exists.
-    [string]$ApiKey = ""
+    # API key for a fresh config.json (or for a rotation, below) so LAN callers must
+    # send X-Api-Key. Leave blank to auto-generate a random one. Loopback callers
+    # (the local test UI) are always exempt.
+    [string]$ApiKey = "",
+    # Monitoring-page password for a fresh config.json (or a rotation). Leave blank
+    # to auto-generate one. There is no default any more — without one the page is off.
+    [string]$MonitorPassword = "",
+    # After a rotation the old API key stays valid this many days (as a
+    # security.additionalApiKeys grace key) so reception keeps working until its
+    # ZKTECO_BRIDGE key is updated.
+    [int]$GraceDays = 7
 )
 
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# ---------------------------------------------------------------------------
+# Secrets. Up to 1.0 every branch got the SAME API key and monitor password
+# (committed in config.example.json). Only the SHA-256 of that key is kept here;
+# an install that still uses it — or the old "Dev@0987" monitor password — is
+# rotated on upgrade.
+# ---------------------------------------------------------------------------
+$LeakedApiKeySha256    = "66b808262f744615323fa0e0e3984c38ee291b2755c1d0d166ac20cfe48eae92"
+$LeakedMonitorPassword = "Dev@0987"
+
+function New-Secret([int]$Bytes) {
+    $buf = New-Object byte[] $Bytes
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($buf) } finally { $rng.Dispose() }
+    return -join ($buf | ForEach-Object { $_.ToString("x2") })
+}
+
+function Get-Sha256Hex([string]$Value) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { $hash = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Value)) } finally { $sha.Dispose() }
+    return -join ($hash | ForEach-Object { $_.ToString("x2") })
+}
+
+function Set-JsonProp($Obj, [string]$Name, $Value) {
+    if ($Obj.PSObject.Properties[$Name]) { $Obj.$Name = $Value }
+    else { $Obj | Add-Member -NotePropertyName $Name -NotePropertyValue $Value }
+}
+
+function Get-Block($Cfg, [string]$Name) {
+    if (-not $Cfg.PSObject.Properties[$Name] -or $null -eq $Cfg.$Name) {
+        Set-JsonProp $Cfg $Name ([pscustomobject]@{})
+    }
+    return $Cfg.$Name
+}
+
+function Get-Str($Obj, [string]$Name) {
+    if ($null -ne $Obj -and $Obj.PSObject.Properties[$Name] -and $null -ne $Obj.$Name) { return [string]$Obj.$Name }
+    return ""
+}
+
+function Save-Config($Cfg, [string]$Path) {
+    ConvertTo-Json -InputObject $Cfg -Depth 10 | Set-Content $Path -Encoding UTF8
+}
+
+# secrets.txt is readable by Administrators and SYSTEM only. The ACL is set on an
+# empty file BEFORE the secrets are written, so they never sit under inherited ACLs.
+function Write-Secrets([string]$Path, [string[]]$Lines) {
+    Set-Content -Path $Path -Value "" -Encoding UTF8
+    & icacls $Path /inheritance:r /grant:r "*S-1-5-32-544:(F)" "*S-1-5-18:(F)" | Out-Null
+    $header = @(
+        "GymSync ZKT Bridge secrets - $(Get-Date -Format 'yyyy-MM-dd HH:mm') on $env:COMPUTERNAME",
+        "Keep this file private. Reception sends the API key as the X-Api-Key header",
+        "(Reception -> API Management -> ZKTECO_BRIDGE -> key).",
+        ""
+    )
+    Set-Content -Path $Path -Value ($header + $Lines) -Encoding UTF8
+}
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
@@ -100,46 +164,127 @@ if (Test-Path $comDll) {
     Write-Host "      WARNING: zkemkeeper.dll not found in sdk\x64\" -ForegroundColor Red
 }
 
-# --- Step 5: Create config.json if not exists ---
+# --- Step 5: config.json + secrets ---
 Write-Host "[5/7] Setting up configuration..." -ForegroundColor Yellow
-$configPath = "$InstallDir\config.json"
-$generatedApiKey = ""
+$configPath  = "$InstallDir\config.json"
+$secretsPath = "$InstallDir\secrets.txt"
+$printApiKey = ""
+$printMonitorPassword = ""
+$graceNote = ""
+
+$templateSource = Join-Path $scriptDir "config.template.json"
+if (Test-Path $templateSource) { Copy-Item $templateSource "$InstallDir\config.template.json" -Force }
+
 if (-not (Test-Path $configPath)) {
-    $configSource = Join-Path $scriptDir "config.json"
-    if (Test-Path $configSource) {
-        Copy-Item $configSource $configPath
-        Write-Host "      config.json copied from installer bundle"
+    # Fresh install. Start from an operator-supplied config.json in the bundle if
+    # there is one, else the shipped template, else a built-in default.
+    $bundleConfig = Join-Path $scriptDir "config.json"
+    if (Test-Path $bundleConfig) {
+        $cfg = Get-Content $bundleConfig -Raw | ConvertFrom-Json
+        Write-Host "      config.json taken from the installer bundle"
+    } elseif (Test-Path $templateSource) {
+        $cfg = Get-Content $templateSource -Raw | ConvertFrom-Json
+        Write-Host "      config.json created from config.template.json - UPDATE DEVICE IPs!" -ForegroundColor Yellow
     } else {
-        # Generate (or accept) an API key so the LAN-exposed control plane isn't open.
-        $generatedApiKey = if ([string]::IsNullOrWhiteSpace($ApiKey)) { [guid]::NewGuid().ToString('N') } else { $ApiKey }
-        # Generate default config
-        @"
+        $cfg = @"
 {
-  "device": {
-    "ip": "192.168.1.201",
-    "port": 4370,
-    "password": 0,
-    "timeout": 10,
-    "machineNumber": 1
-  },
+  "device":  { "ip": "192.168.1.201", "port": 4370, "password": 0, "timeout": 10, "machineNumber": 1 },
   "devices": [],
-  "storage": {
-    "path": "$($InstallDir -replace '\\', '\\')\\storage\\templates"
-  },
-  "web": {
-    "host": "0.0.0.0",
-    "port": $Port
-  },
-  "security": {
-    "apiKey": "$generatedApiKey"
-  }
+  "storage": { "path": "storage/templates" },
+  "web":     { "host": "0.0.0.0", "port": $Port },
+  "security": { "apiKey": "", "additionalApiKeys": [] },
+  "monitorPage": { "password": "" }
 }
-"@ | Set-Content $configPath -Encoding UTF8
+"@ | ConvertFrom-Json
         Write-Host "      Default config.json created - UPDATE DEVICE IPs!" -ForegroundColor Yellow
-        Write-Host "      API key generated - reception must send it as X-Api-Key" -ForegroundColor Yellow
     }
+
+    $web = Get-Block $cfg "web"
+    Set-JsonProp $web "port" $Port
+
+    # Never keep an empty or leaked secret: generate per-branch ones.
+    $security = Get-Block $cfg "security"
+    $key = Get-Str $security "apiKey"
+    if ($ApiKey) { $key = $ApiKey }
+    elseif (-not $key -or (Get-Sha256Hex $key) -eq $LeakedApiKeySha256) { $key = New-Secret 32 }
+    Set-JsonProp $security "apiKey" $key
+
+    $monitorPage = Get-Block $cfg "monitorPage"
+    $pw = Get-Str $monitorPage "password"
+    if ($MonitorPassword) { $pw = $MonitorPassword }
+    elseif (-not $pw -or $pw -eq $LeakedMonitorPassword) { $pw = New-Secret 10 }
+    Set-JsonProp $monitorPage "password" $pw
+
+    Save-Config $cfg $configPath
+    Write-Secrets $secretsPath @("API key:               $key", "Monitor page password: $pw")
+    $printApiKey = $key
+    $printMonitorPassword = $pw
+    Write-Host "      API key + monitor password generated - saved to $secretsPath (admins only)" -ForegroundColor Yellow
 } else {
     Write-Host "      config.json already exists, keeping it" -ForegroundColor Green
+    $cfg = $null
+    try { $cfg = Get-Content $configPath -Raw | ConvertFrom-Json }
+    catch { Write-Host "      WARNING: config.json could not be parsed - secrets NOT checked: $($_.Exception.Message)" -ForegroundColor Red }
+
+    if ($cfg) {
+        $security    = Get-Block $cfg "security"
+        $monitorPage = Get-Block $cfg "monitorPage"
+        $oldKey = Get-Str $security "apiKey"
+        $oldPw  = Get-Str $monitorPage "password"
+
+        $keyLeaked = $oldKey -and ((Get-Sha256Hex $oldKey) -eq $LeakedApiKeySha256)
+        $pwLeaked  = $oldPw -eq $LeakedMonitorPassword
+        $changed = $false
+
+        if ($keyLeaked -or $pwLeaked) {
+            # Rotate BOTH. The old key stays valid for $GraceDays days as a grace key
+            # so reception keeps working until its key is updated.
+            Copy-Item $configPath "$configPath.bak-$(Get-Date -Format 'yyyyMMddHHmmss')"
+
+            $newKey = if ($ApiKey) { $ApiKey } else { New-Secret 32 }
+            $newPw  = if ($MonitorPassword) { $MonitorPassword } else { New-Secret 10 }
+
+            if ($oldKey) {
+                $expires = (Get-Date).ToUniversalTime().AddDays($GraceDays).ToString("yyyy-MM-ddTHH:mm:ssZ")
+                $grace = @()
+                if ($security.PSObject.Properties["additionalApiKeys"] -and $security.additionalApiKeys) {
+                    $grace = @($security.additionalApiKeys)
+                }
+                $grace += [pscustomobject]@{ key = $oldKey; expiresAt = $expires }
+                Set-JsonProp $security "additionalApiKeys" $grace
+                $graceNote = "The previous API key is still accepted until $expires (UTC)."
+            }
+
+            Set-JsonProp $security "apiKey" $newKey
+            Set-JsonProp $monitorPage "password" $newPw
+            $changed = $true
+            $printApiKey = $newKey
+            $printMonitorPassword = $newPw
+            Write-Host "      SECURITY: this install used the API key / monitor password that shipped" -ForegroundColor Red
+            Write-Host "      with every branch up to 1.0 - both have been ROTATED." -ForegroundColor Red
+        } elseif (-not $oldPw) {
+            # 1.0 fell back to a built-in password when none was set; 1.1 has none and
+            # disables the page instead. Give this branch its own so the page still works.
+            $newPw = if ($MonitorPassword) { $MonitorPassword } else { New-Secret 10 }
+            Set-JsonProp $monitorPage "password" $newPw
+            $changed = $true
+            $printMonitorPassword = $newPw
+            Write-Host "      No monitor password was set - generated one for this branch" -ForegroundColor Yellow
+        }
+
+        if ($changed) {
+            Save-Config $cfg $configPath
+            $lines = @("API key:               $(Get-Str $security 'apiKey')", "Monitor page password: $(Get-Str $monitorPage 'password')")
+            if ($graceNote) { $lines += $graceNote }
+            Write-Secrets $secretsPath $lines
+            Write-Host "      Secrets saved to $secretsPath (admins only)" -ForegroundColor Yellow
+        }
+
+        if (-not (Get-Str $security "apiKey")) {
+            Write-Host "      WARNING: security.apiKey is empty - the API is open to the LAN." -ForegroundColor Red
+            Write-Host "      Re-run with -ApiKey <key>, or set security.apiKey in config.json." -ForegroundColor Red
+        }
+    }
 }
 
 # --- Step 6: Install Windows service ---
@@ -203,11 +348,19 @@ if ($svc.Status -eq "Running") {
     }
     Write-Host "  Config    : $configPath"
     Write-Host "  Logs      : $InstallDir\logs\"
-    if ($generatedApiKey) {
+    if ($printApiKey) {
         Write-Host ""
-        Write-Host "  API KEY   : $generatedApiKey" -ForegroundColor Cyan
-        Write-Host "  Configure reception to send it as the 'X-Api-Key' header." -ForegroundColor Yellow
+        Write-Host "  API KEY   : $printApiKey" -ForegroundColor Cyan
+        Write-Host "  Configure reception to send it as the 'X-Api-Key' header" -ForegroundColor Yellow
+        Write-Host "  (Reception -> API Management -> ZKTECO_BRIDGE -> key)." -ForegroundColor Yellow
         Write-Host "  (Local/loopback calls and the test UI on this PC don't need it.)"
+        if ($graceNote) { Write-Host "  $graceNote" -ForegroundColor Yellow }
+    }
+    if ($printMonitorPassword) {
+        Write-Host "  MONITOR   : http://localhost:$Port/monitor.html  password: $printMonitorPassword" -ForegroundColor Cyan
+    }
+    if ($printApiKey -or $printMonitorPassword) {
+        Write-Host "  Both are saved in $secretsPath (Administrators only)."
     }
     Write-Host ""
     Write-Host "  NEXT: Edit config.json with your device IPs, then restart:" -ForegroundColor Yellow

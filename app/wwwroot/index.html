@@ -34,6 +34,7 @@
     <button class="tab" data-tab="attendance">Attendance</button>
     <button class="tab" data-tab="device">Device</button>
     <button class="tab" data-tab="cached">Cached</button>
+    <button class="tab" data-tab="live">Live</button>
   </nav>
 
   <main>
@@ -499,11 +500,21 @@
 
       <section class="card">
         <h2>Cached user list</h2>
-        <p class="muted" style="margin:0 0 10px">The warm user list + per-PIN groups. <code>stale: true</code> means reception would fall back to a live read.</p>
+        <p class="muted" style="margin:0 0 10px">The warm user list + per-PIN groups. <code>stale: true</code> means reception would fall back to a live read; <code>complete</code> means it came from a read validated against the device's own user count with every group read.</p>
         <div class="inline">
           <button data-action="users-cached">Fetch cached users</button>
         </div>
         <div class="output" id="out-users-cached"></div>
+      </section>
+
+      <section class="card">
+        <h2>Verify the cached list</h2>
+        <p class="muted" style="margin:0 0 10px">"Verify now" asks the background refresh to re-read this device in chunks (reception's calls get in between chunks). The cache is replaced only if the read is complete; otherwise the old list stays and the error is shown.</p>
+        <div class="inline">
+          <button data-action="users-verify">Verify now</button>
+          <button data-action="users-verify-status">Refresh status</button>
+        </div>
+        <div class="output" id="out-users-verify"></div>
       </section>
 
       <section class="card">
@@ -524,6 +535,32 @@
           <button data-action="group-cached">Get cached group</button>
         </div>
         <div class="output" id="out-group-cached"></div>
+      </section>
+    </div>
+
+    <!-- ==================== LIVE TAB ==================== -->
+    <!-- The device's own answer beside the cache's. Read-only: nothing here writes
+         the cache except the "Overwrite cache" button. -->
+    <div class="tab-pane" id="tab-live">
+      <section class="card">
+        <h2>Live user list (device vs cache)</h2>
+        <p class="muted" style="margin:0 0 10px">Reads every user and access group off the device and sets the cached group beside it. Group 1 = open, group 2 = blocked; ⚠ marks a PIN that can't be grouped. Slow on a full device — it reads one group per user, in chunks, and each chunk holds the device. Every button here asks before it runs.</p>
+        <div class="inline">
+          <button data-action="users-live">Read users from device</button>
+          <label class="checkbox"><input id="users-live-drift-only" type="checkbox" /> Show mismatches only</label>
+          <button data-action="users-live-overwrite-cache">Overwrite cache from device</button>
+        </div>
+        <div class="output" id="out-users-live"></div>
+      </section>
+
+      <section class="card">
+        <h2>Live single user</h2>
+        <p class="muted" style="margin:0 0 10px">One PIN's name, privilege, group and card read off the device, beside its cached record.</p>
+        <div class="inline">
+          <label>Enroll # <input id="user-live-enroll" placeholder="e.g. 1001" /></label>
+          <button data-action="user-live">Read user from device</button>
+        </div>
+        <div class="output" id="out-user-live"></div>
       </section>
     </div>
   </main>
